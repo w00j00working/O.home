@@ -11,7 +11,6 @@
  */
 import { useCallback, useEffect, useReducer } from 'react';
 import { getRawSetting, setSetting } from './settingStore';
-import { newId } from './postStore';
 import type { ExtraEntry } from './menuStore';
 
 const KEY = 'ohome.links.v1';
@@ -64,7 +63,6 @@ function notify() { try { window.dispatchEvent(new Event(EVT)); } catch { /* 무
 export function useCustomLinks(): {
   links: CustomLink[];
   setLinks: (next: CustomLink[]) => void;
-  add: () => void;
   loaded: boolean;
 } {
   const [, force] = useReducer((x: number) => x + 1, 0);
@@ -82,13 +80,7 @@ export function useCustomLinks(): {
     notify();
   }, []);
 
-  const add = useCallback(() => {
-    cache = [...cache, { id: newId(), name: '새 링크', href: '/' }];
-    try { setSetting(KEY, cache); } catch { /* 무시 */ }
-    notify();
-  }, []);
-
-  return { links: cache, setLinks, add, loaded };
+  return { links: cache, setLinks, loaded };
 }
 
 /** 메뉴에 얹을 형태로 — 주소가 비어 있는 것은 뺀다(메뉴에 눌러도 아무 데도 안 가는 항목이 생긴다).
