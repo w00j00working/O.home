@@ -2132,7 +2132,6 @@ function MenuPane() {
     // 2. 🌟 [추가] MAIN 및 TRPG 탭의 나머지 메뉴들 일괄 적용
     const genericPaths = ['/chars', '/rels', '/tchars', '/trpg', '/dotori', '/playlog'];
     if (genericPaths.some(p => href === p || href.startsWith(p + '?'))) {
-      // 주소에서 '/'를 떼어내어 고유 키로 사용 (예: '/chars' -> 'chars')
       const key = href.split('?')[0].replace('/', ''); 
       return (
         <>
@@ -2188,17 +2187,6 @@ function MenuPane() {
 
     return null;
   };
-    if (href === '/loadb') {
-      return (
-        <>
-          {permSel('업로드', ms.roadUpload, v => patch({ roadUpload: v }))}
-          {permSel('댓글', ms.roadComment, v => patch({ roadComment: v }))}
-        </>
-      );
-    }
-    return null;
-  };
-
   /* 「주소로는 열람 허용」 (v2.0 사용자 요청) — 메뉴·위젯에서는 감추되 들어오는 것만 열어 준다.
      링크로만 돌릴 게시판을 만들려는 용도라, 켤 때 **주소를 아는 사람은 누구나 본다**는 점을
      모달로 분명히 알린다(사용자 요청). 「전부 보임」에서는 이미 열려 있으므로 뜻이 없어 감춘다 */
