@@ -14,6 +14,7 @@ import { useBoardSettings, boardBadgeStyle } from '@/lib/boardStore';
 import { useMainStore } from '@/lib/mainStore';
 import { useCardSort, mergeOrder } from '@/lib/cardSort';
 import { useMenuSettings } from '@/lib/menuStore';
+import { useMenuSettings, MenuPerm } from '@/lib/menuStore'; // MenuPerm 추가
 
 const FOLD_LABEL = { spoiler: '스포일러', adult: '수위 주의' };
 
@@ -34,6 +35,12 @@ function BackupPageInner() {
   useEffect(() => {
     if (menuLoaded && !viewInit) { setView(menuSet.backupView); setViewInit(true); }
   }, [menuLoaded, viewInit, menuSet.backupView]);
+  // 🌟 [추가] 업로드 권한 체크 로직
+  const permUpload: MenuPerm = menuSet.galUpload ?? 'member'; // 기본값: 가입자
+  const canUpload = 
+    isAdmin || 
+    (permUpload === 'guest') || 
+    (permUpload === 'member' && !!user);
   const { st: boardSet } = useBoardSettings(); // 유형 뱃지 색 (환경설정 > 게시판 관리)
   const typeBadge = (t: 'log' | 'single' | 'vlist') => boardSet.gallery.find(b => b.id === t);
   const [q, setQ] = useState('');
@@ -67,14 +74,15 @@ function BackupPageInner() {
         <PageTitle>{sec.id === 'main' ? 'GALLERY' : sec.name}</PageTitle>
         <EditableDesc k="backup-desc" def="로그형(웹툰 스크롤) / 단일형(좌우 넘김) · 리스트/갤러리 보기 전환" />
       </div>
-      <div className="toolrow">
+<div className="toolrow">
         <div className="seg">
           <button className={view === 'gal' ? 'on' : ''} onClick={() => setView('gal')}>갤러리</button>
           <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>리스트</button>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SearchBar onSearch={setQ} />
-          {user && <button className="btn btn-dark" onClick={() => router.push('/gallery/write' + secQuery('gallery', sec.id))}>✎ WRITE</button>}
+          {/* 🌟 user 대신 canUpload로 변경 */}
+          {canUpload && <button className="btn btn-dark" onClick={() => router.push('/gallery/write' + secQuery('gallery', sec.id))}>✎ WRITE</button>}
         </div>
       </div>
 
