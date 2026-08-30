@@ -2129,8 +2129,12 @@ function MenuPane() {
       );
     }
 
-    // 2. 🌟 [추가] MAIN 및 TRPG 탭의 나머지 메뉴들 일괄 적용
-    const genericPaths = ['/chars', '/rels', '/tchars', '/trpg', '/dotori', '/playlog'];
+// 2. 🌟 MAIN, TRPG, 기록 탭의 나머지 메뉴들 일괄 적용
+    const genericPaths = [
+      '/chars', '/rels', '/tchars', '/trpg', '/dotori', '/playlog',
+      '/cal', '/diary', '/threads', '/memo' // ← 기록 탭 항목들 추가
+    ];
+    
     if (genericPaths.some(p => href === p || href.startsWith(p + '?'))) {
       const key = href.split('?')[0].replace('/', ''); 
       return (
