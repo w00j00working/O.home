@@ -2108,7 +2108,7 @@ function MenuPane() {
     }
   };
 
-  // 메뉴별 권한 부속 — 권한 탭용 (v1.9)
+// 메뉴별 권한 부속 — 권한 탭용 (v1.9)
   const extraPerm = (href: string) => {
     // 역극 — 비로그인 안내 문구 (관리자는 그 화면을 볼 수 없어 여기서 편집)
     if (href === '/rp') {
@@ -2118,6 +2118,17 @@ function MenuPane() {
           placeholder="비로그인 안내 문구" style={{ width: 210, fontSize: 12 }} />
       );
     }
+
+    // 🌟 [추가] 갤러리 업로드 및 댓글 권한 드롭다운
+    if (href === '/gallery' || href.startsWith('/gallery')) {
+      return (
+        <>
+          {permSel('업로드', ms.galUpload ?? 'member', v => patch({ galUpload: v }))}
+          {permSel('댓글', ms.galComment ?? 'member', v => patch({ galComment: v }))}
+        </>
+      );
+    }
+
     // 게시판 글쓰기·댓글 권한 (게시판별)
     if (href === '/board' || href.startsWith('/board?b=')) {
       const bid = href === '/board' ? MAIN_BOARD_ID : href.slice('/board?b='.length);
