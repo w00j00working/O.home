@@ -15,24 +15,24 @@ import { useToast } from '@/components/ui/Toast';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { useMainStore } from '@/lib/mainStore';
 import { useCardSort, mergeOrder } from '@/lib/cardSort';
+import { useMenuSettings } from '@/lib/menuStore'; // 🌟 권한 설정을 불러오기 위해 추가
 
 function CharsInner() {
   const router = useRouter();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth(); // 🌟 user 정보 추가
   const toast = useToast();
   const { editOn } = useMainStore();
   const [charsAll, setCharsAll] = useLocalList<Character>('ohome.chars.v1', CHAR_SEED);
-  // 여러 개로 만든 캐릭터 목록 (v2.0 사용자 요청) — 주소의 ?s= 가 가리키는 것만
   const sec = useSectionParam('chars');
   const chars = filterSection(charsAll, sec.id);
-  // 저장은 이 목록 자리만 교체 — 걸러진 목록을 그대로 넘겨도 다른 목록이 지워지지 않는다
   const setChars = sectionSetter(charsAll, sec.id, setCharsAll);
   const [q, setQ] = useState('');
 
-  /* 편집 권한 문서 자가 치유 (v2.0 포크 제보 — 「권한을 줬는데 그 회원의 저장이 거부된다」).
-     업데이트 전에 준 권한은 문서에 규칙이 읽는 평평한 목록(editorIds)이 없어, 최신 규칙을
-     넣어도 서버가 그 회원의 저장을 계속 거부한다. 관리자가 이 목록을 열면 권한 있는 캐릭터의
-     editorIds를 서버에서 한 번 다시 계산해 둔다 — 세션당 1회, 조용히. */
+  // 🌟 [권한 검사 추가] 환경설정의 charsWrite 값을 읽어옵니다.
+  const [menuSet] = useMenuSettings();
+  const permWrite = (menuSet as any).charsWrite ?? 'member'; // 기본값: 가입자
+  const canWrite = isAdmin || (permWrite === 'guest') || (permWrite === 'member' && !!user);
+
   useEffect(() => {
     if (!isAdmin || !isServerMode()) return;
     const withGrants = charsAll.filter(c => c.grants?.some(g => g.level === 'edit'));
@@ -50,7 +50,6 @@ function CharsInner() {
     .filter(c => isAdmin || c.visibility === 'public')
     .filter(c => !q || c.name.toLowerCase().includes(q.toLowerCase()) || c.sub.includes(q));
 
-  // 편집모드 카드 드래그 정렬 (v1.9)
   const sort = useCardSort(visible, next => setChars(mergeOrder(chars, next)), editOn && isAdmin);
 
   return (
@@ -60,7 +59,8 @@ function CharsInner() {
         <EditableDesc k="chars-desc" def="운영자의 자캐 목록 · 3:4 두상 썸네일 · 클릭 시 프로필로 이동" />
         <div className="head-actions">
           <SearchBar onSearch={setQ} />
-          {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/chars/new' + secQuery('chars', sec.id))}>＋ ADD CHARACTER</button>}
+          {/* 🌟 기존 isAdmin 조건을 canWrite 로 변경 */}
+          {canWrite && <button className="btn btn-dark" onClick={() => router.push('/chars/new' + secQuery('chars', sec.id))}>＋ ADD CHARACTER</button>}
         </div>
       </div>
       <div className="g5 chars-grid">
@@ -76,8 +76,6 @@ function CharsInner() {
                   label={priv ? '비공개' : '3:4'} />
               </div>
               <div className="nm">
-                {/* 리스트에서는 기본 폰트로 통일 — 개별 이름 폰트는 상세에서만 (사용자 확정).
-                    긴 이름은 두 줄로 갈라지지 않게 한 줄에 맞춰 줄인다 */}
                 <b style={{ minWidth: 0, flex: 1 }}><FitText>{c.name}</FitText></b>
                 <i style={{ background: c.color }} />
               </div>
@@ -95,6 +93,5 @@ function CharsInner() {
 }
 
 export default function CharsPage() {
-  // useSearchParams는 Suspense 경계 필요 (Next App Router)
   return <Suspense fallback={<section className="page" />}><CharsInner /></Suspense>;
 }
