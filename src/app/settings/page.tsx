@@ -2119,12 +2119,12 @@ function MenuPane() {
       );
     }
 
-    // 🌟 [추가] 갤러리 업로드 및 댓글 권한 드롭다운
+// 🌟 [추가] 갤러리 업로드 및 댓글 권한 드롭다운 (타입 에러 방지 처리)
     if (href === '/gallery' || href.startsWith('/gallery')) {
       return (
         <>
-          {permSel('업로드', ms.galUpload ?? 'member', v => patch({ galUpload: v }))}
-          {permSel('댓글', ms.galComment ?? 'member', v => patch({ galComment: v }))}
+          {permSel('업로드', (ms as any).galUpload ?? 'member', v => patch({ galUpload: v } as any))}
+          {permSel('댓글', (ms as any).galComment ?? 'member', v => patch({ galComment: v } as any))}
         </>
       );
     }
