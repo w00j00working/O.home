@@ -9,9 +9,15 @@ import { useBoards, boardHref, MAIN_BOARD_ID } from '@/lib/boardStore';
 import { renderBody } from '@/lib/sanitize';
 import { KInput, KTextarea, KSelect, KCheck } from '@/components/ui/Kit';
 import { CropEditor, CropImg, CropValue } from '@/components/ui/CropEditor';
+import { ConfirmModal } from '@/components/ui/Modal';
 import { RichEditor } from '@/components/ui/RichEditor';
 import { useToast } from '@/components/ui/Toast';
 import { PageTitle, EditableDesc } from '@/components/ui/PageText';
+
+/** 에디터가 다루지 못해 정리될 만한 태그·속성이 있는가 — 전환 경고 판단 (인트로와 같은 기준) */
+const hasRichHtml = (html: string) =>
+  /<(table|thead|tbody|tr|td|th|div|span|section|article|video|audio|details|summary|font|center)\b/i.test(html)
+  || /\s(style|class|id)\s*=/i.test(html);
 
 function WriteInner() {
   const router = useRouter();
@@ -27,12 +33,19 @@ function WriteInner() {
   const [title, setTitle] = useState('');
   const [writeMode, setWriteMode] = useState<'editor' | 'md' | 'html'>('editor'); // 에디터가 기본
   const [body, setBody] = useState('');
+  // HTML 모드 안의 보기 (v2.0 사용자 요청) — 코드 그대로 / 미리보기에서 바로 편집
+  const [htmlView, setHtmlView] = useState<'code' | 'preview'>('code');
+  const [askRich, setAskRich] = useState<null | (() => void)>(null);   // 정리 경고 후 실행할 전환
   const [category, setCategory] = useState('');
   // 말머리 기본값 — 게시판별 목록(5.2) 로드 후 첫 항목
   React.useEffect(() => { if (!category && board.cats[0]) setCategory(board.cats[0].label); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board.cats.length]);
   const [secret, setSecret] = useState(false);
   const [notice, setNotice] = useState(false);
+  // 태그 (v2.0 사용자 요청) — 쉼표로 구분해 입력, 저장할 때 배열로
+  const [tagsText, setTagsText] = useState('');
+  const parseTags = (s: string) =>
+    [...new Set(s.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean))];
   const [foldType, setFoldType] = useState<FoldType | 'none'>('none');
   const [foldLabel, setFoldLabel] = useState('');
   // 티켓 스킨 대표 이미지 (v1.9) — 본문에 삽입한 이미지 중 선택 + 16:9 썸네일 크롭
@@ -65,6 +78,7 @@ function WriteInner() {
     setCategory(p.category);
     setSecret(p.secret); setNotice(p.notice);
     setFoldType(p.fold?.type ?? 'none'); setFoldLabel(p.fold?.label ?? '');
+    setTagsText((p.tags ?? []).join(', '));
     setThumbSrc(p.thumbSrc); setThumbCrop(p.thumbCrop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editPid, postsLoaded, posts]);
@@ -91,6 +105,7 @@ function WriteInner() {
         authored: writeMode === 'editor' ? 'editor' : undefined,
         category,
         secret, notice: isAdmin ? notice : p.notice,
+        tags: parseTags(tagsText),
         fold: foldType === 'none' ? null : { type: foldType, label: foldType === 'custom' ? foldLabel : undefined },
         thumbSrc, thumbCrop,
       } : p)));
@@ -103,6 +118,7 @@ function WriteInner() {
       mode: writeMode === 'md' ? 'md' : 'html', category,
       author: user.nickname, authorId: user.id, date: new Date().toISOString(),
       secret, notice: isAdmin && notice,
+      tags: parseTags(tagsText),
       fold: foldType === 'none' ? null : { type: foldType, label: foldType === 'custom' ? foldLabel : undefined },
       comments: [],
       boardId: board.id,   // 소속 게시판 (5.2 다중 게시판)
@@ -115,7 +131,9 @@ function WriteInner() {
 
   return (
     <section className="page">
-      <div className="page-head"><PageTitle>{editing ? 'EDIT' : 'WRITE'}</PageTitle><EditableDesc k="board-write-desc" def="에디터 / Markdown / HTML — 스크립트는 저장 시 자동 제거" /></div>
+      {/* 큰 글씨 — 추가 게시판이면 그 이름(메뉴 관리 타이틀·이름이 우선), 누르면 그 게시판으로 복귀
+          (v2.0 사용자 제보 — 「글쓰기에서 큰제목을 눌러도 안 돌아가고, 제목도 원래 것이 뜬다」) */}
+      <div className="page-head"><PageTitle href={boardHref(board.id)}>{board.id === MAIN_BOARD_ID ? (editing ? 'EDIT' : 'WRITE') : board.name}</PageTitle><EditableDesc k="board-write-desc" def="에디터 / Markdown / HTML — 스크립트는 저장 시 자동 제거" /></div>
       <div className="write-grid">
         {/* 좌: 본문 */}
         <div className="panel" style={{ padding: 24 }}>
@@ -126,12 +144,27 @@ function WriteInner() {
           <div className="form-row">
             <label className="k-label" style={{ width: 60 }}>모드</label>
             <div className="mini-seg">
-              <button className={writeMode === 'editor' ? 'on' : ''} onClick={() => setWriteMode('editor')}>에디터</button>
-              <button className={writeMode === 'md' ? 'on' : ''} onClick={() => setWriteMode('md')}>Markdown</button>
+              {/* HTML로 쓴 글을 에디터로 열면 다루지 못하는 태그가 정리된다 — 되돌릴 수 없어 물어본다 (v2.0) */}
+              <button className={writeMode === 'editor' ? 'on' : ''} onClick={() => {
+                if (writeMode === 'html' && hasRichHtml(body)) { setAskRich(() => () => setWriteMode('editor')); return; }
+                setWriteMode('editor');
+              }}>에디터</button>
+              <button className={writeMode === 'md' ? 'on' : ''} onClick={() => { setWriteMode('md'); setHtmlView('code'); }}>Markdown</button>
               <button className={writeMode === 'html' ? 'on' : ''} onClick={() => setWriteMode('html')}>HTML</button>
             </div>
+            {/* HTML 모드 안 보기 전환 (v2.0 사용자 요청) — 코드 그대로 / 미리보기에서 바로 편집 */}
+            {writeMode === 'html' && (
+              <div className="mini-seg">
+                <button className={htmlView === 'code' ? 'on' : ''} onClick={() => setHtmlView('code')}>코드</button>
+                <button className={htmlView === 'preview' ? 'on' : ''} onClick={() => {
+                  if (htmlView === 'preview') return;
+                  if (hasRichHtml(body)) { setAskRich(() => () => setHtmlView('preview')); return; }
+                  setHtmlView('preview');
+                }}>미리보기 (편집 가능)</button>
+              </div>
+            )}
           </div>
-          {writeMode === 'editor' ? (
+          {writeMode === 'editor' || (writeMode === 'html' && htmlView === 'preview') ? (
             <RichEditor value={body} onChange={setBody} placeholder='내용을 작성하세요 — 이미지 삽입 가능 (스크립트 불허 6.3)' />
           ) : (
             <>
@@ -182,6 +215,12 @@ function WriteInner() {
               <KSelect minWidth={130} value={category} onChange={setCategory}
                 options={board.cats.map(x => ({ value: x.label, label: x.label }))} placeholder='말머리 선택' />
             </div>
+            {/* 태그 (v2.0 사용자 요청) — 목록의 작성자 왼쪽에 나열되고 검색에 걸린다 */}
+            <div className="form-row">
+              <label className="k-label" style={{ width: 60 }}>태그</label>
+              <KInput value={tagsText} onChange={e => setTagsText(e.target.value)}
+                placeholder="쉼표로 구분" style={{ flex: 1 }} />
+            </div>
             <div style={{ display: 'grid', gap: 9 }}>
               <KCheck label="비밀글 (관리자와 나만 열람)" checked={secret} onChange={setSecret} />
               {isAdmin && <KCheck label="공지로 고정" checked={notice} onChange={setNotice} />}
@@ -208,6 +247,15 @@ function WriteInner() {
           </div>
         </div>
       </div>
+
+      {/* HTML → 에디터/편집 미리보기 전환 경고 (v2.0) — 다루지 못하는 태그는 편집 순간 정리된다 */}
+      <ConfirmModal open={askRich !== null} title="여기서 편집하면 일부 태그가 정리됩니다"
+        body="에디터는 굵게·목록·제목·이미지 같은 기본 서식만 다룹니다. 표·div·style·class 등은 편집하는 순간 정리되며 되돌릴 수 없습니다. HTML을 그대로 두려면 취소하세요."
+        onClose={() => setAskRich(null)}
+        buttons={[
+          { label: 'CANCEL', kind: 'ghost', onClick: () => setAskRich(null) },
+          { label: '계속', kind: 'accent', onClick: () => { askRich?.(); setAskRich(null); } },
+        ]} />
 
       {/* 대표 썸네일 위치 지정 — 16:9 (티켓 스킨) */}
       {cropOpen && thumbSrc && (

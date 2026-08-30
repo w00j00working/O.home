@@ -22,6 +22,13 @@ export interface FontDef {
   pairId?: string;     // 영문 폰트일 때 한글 폴백 페어 — 목록의 다른 폰트 id (v1.9)
 }
 
+/** 「기본」·「기본 세리프」의 family는 var(--sans)/var(--serif)인데, 그 두 변수는 **역할 폰트가
+ *  덮어쓰는 자리**다. 그대로 쓰면 「기본 세리프」가 「지금 타이틀에 지정된 폰트」를 뜻하게 된다
+ *  (v2.0 사용자 발견 — 「기본 세리프가 내가 업로드한 폰트를 계속 잡아」).
+ *  원본 스택(--sans-base/--serif-base)으로 풀어 그 별칭 고리를 끊는다. */
+export const deVarFamily = (fam: string): string =>
+  (fam === 'var(--sans)' ? 'var(--sans-base)' : fam === 'var(--serif)' ? 'var(--serif-base)' : fam);
+
 export const BUILTIN_FONTS: FontDef[] = [
   { id: 'default', name: '기본 (프리텐다드)', family: 'var(--sans)', builtin: true, locked: true },
   { id: 'serif', name: '기본 세리프 (Cormorant + Noto Serif KR)', family: 'var(--serif)', builtin: true, locked: true },
@@ -107,6 +114,7 @@ interface FontCtx {
   setFontPair: (id: string, pairId?: string) => void;                            // 한글 페어 지정/해제 (v1.9)
   updateFont: (id: string, patch: { name: string; family: string; cssUrl: string }) => boolean;
   removeFont: (id: string) => void;              // 내장이면 숨김, 커스텀이면 삭제
+  resetFont: (id: string) => void;               // 내장 폰트 수정값 초기화 (v2.0)
   restoreBuiltins: () => void;                   // 숨긴 내장 폰트 전부 복원
   familyOf: (id?: string) => string | undefined; // 숨긴 폰트도 해석 (기존 데이터 보호)
 }
@@ -162,6 +170,14 @@ export function FontProvider({ children }: { children: React.ReactNode }) {
     pool.forEach(f => {
       if (!f.fileId || loadedFiles.current.has(f.id)) return;
       loadedFiles.current.add(f.id);
+      /* 서버 모드의 파일은 저장소 공개 URL — **폰트는 CORS 강제 자원**이라 저장소가 허용 헤더를
+         안 주면 직접 로드가 조용히 거부된다 (v2.0 사용자 제보 — 「등록한 폰트가 적용이 안 돼요」,
+         화면 전체가 폴백 세리프로 남던 원인). 같은 출처 중계(/api/font)로 받아 CORS를 피한다 */
+      if (/^https?:/.test(f.fileId)) {
+        const face = new FontFace(f.family, `url("/api/font?u=${encodeURIComponent(f.fileId)}")`);
+        face.load().then(fc => document.fonts.add(fc)).catch(() => { /* 접근 불가 — 폴백 렌더 */ });
+        return;
+      }
       getBlob(f.fileId).then(b => {
         if (!b) return;
         const face = new FontFace(f.family, `url(${URL.createObjectURL(b)})`);
@@ -176,24 +192,31 @@ export function FontProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // '기본'류(family가 var(--sans)/var(--serif))는 원본 스택으로 풀어 순환 참조 방지.
     // 페어(pairId)가 있으면 "영문 폰트, 한글 페어" 스택으로 합성 (v1.9)
-    const deVar = (fam: string) =>
-      fam === 'var(--sans)' ? 'var(--sans-base)' : fam === 'var(--serif)' ? 'var(--serif-base)' : fam;
-    const resolve = (id: string): string => {
+    const deVar = deVarFamily;
+    /* 지정한 폰트가 사라졌으면 **그 역할의 기본값**으로 (v2.0 사용자 발견 — 「폰트를 지우니
+       기본 세리프체가 이상해졌다」). 예전에는 무조건 `var(--sans-base)`로 떨어져,
+       타이틀처럼 세리프여야 할 자리가 소리 없이 고딕이 됐다. 내장 폰트는 지워도 pool에 남아
+       (숨김일 뿐) 여기 걸리지 않는다 — 직접 등록했다 지운 폰트만 해당된다. */
+    const resolve = (id: string, role?: FontRole): string => {
       if (id === FOLLOW_MENU) return 'var(--font-menu)';   // 드롭다운: 메뉴 폰트 따라감
       if (id === FOLLOW_TITLE) return 'var(--serif)';      // 메뉴 타이틀: 타이틀 폰트 따라감
       const f = pool.find(x => x.id === id);
-      if (!f) return 'var(--sans-base)';
+      if (!f) {
+        const back = role ? DEFAULT_ROLES[role].id : 'default';
+        // 기본값이 또 「따라가기」이거나 자기 자신이면 더 파고들지 않는다 (무한 재귀 방지)
+        return back === id ? 'var(--sans-base)' : resolve(back);
+      }
       const p = f.pairId ? pool.find(x => x.id === f.pairId) : undefined;
       return p ? `${deVar(f.family)}, ${deVar(p.family)}` : deVar(f.family);
     };
     const root = document.documentElement.style;
-    root.setProperty('--sans', resolve(roles.body.id));
-    root.setProperty('--serif', resolve(roles.title.id));
-    root.setProperty('--font-menu', resolve(roles.menu.id));
-    root.setProperty('--font-dropdown', resolve(roles.dropdown.id));
-    root.setProperty('--font-pagetitle', resolve(roles.pagetitle.id));
-    root.setProperty('--font-subtitle', resolve(roles.subtitle.id));
-    root.setProperty('--font-logosub', resolve(roles.logosub.id));
+    root.setProperty('--sans', resolve(roles.body.id, 'body'));
+    root.setProperty('--serif', resolve(roles.title.id, 'title'));
+    root.setProperty('--font-menu', resolve(roles.menu.id, 'menu'));
+    root.setProperty('--font-dropdown', resolve(roles.dropdown.id, 'dropdown'));
+    root.setProperty('--font-pagetitle', resolve(roles.pagetitle.id, 'pagetitle'));
+    root.setProperty('--font-subtitle', resolve(roles.subtitle.id, 'subtitle'));
+    root.setProperty('--font-logosub', resolve(roles.logosub.id, 'logosub'));
     (Object.keys(roles) as FontRole[]).forEach(r => {
       const cfg = roles[r];
       root.setProperty(`--fs-${r}`, String((cfg.scale ?? 100) / 100));
@@ -246,15 +269,43 @@ export function FontProvider({ children }: { children: React.ReactNode }) {
     if (!patch.name.trim() || !patch.family.trim()) return false;
     const p = { name: patch.name.trim(), family: patch.family.trim(), cssUrl: patch.cssUrl.trim() || undefined };
     apply(s => BUILTIN_FONTS.some(f => f.id === id)
-      ? { ...s, overrides: { ...s.overrides, [id]: p } }
+      // 통째로 덮어쓰면 한글 페어가 조용히 사라진다 — 기존 값 위에 얹는다 (v2.0)
+      ? { ...s, overrides: { ...s.overrides, [id]: { ...s.overrides[id], ...p } } }
       : { ...s, custom: s.custom.map(f => (f.id === id ? { ...f, ...p } : f)) });
     return true;
   }, []);
 
   const removeFont = useCallback((id: string) => {
-    apply(s => BUILTIN_FONTS.some(f => f.id === id)
-      ? { ...s, hidden: s.hidden.includes(id) ? s.hidden : [...s.hidden, id] }
-      : { ...s, custom: s.custom.filter(f => f.id !== id) });
+    apply(s => {
+      const builtin = BUILTIN_FONTS.some(f => f.id === id);
+      const base = builtin
+        ? { ...s, hidden: s.hidden.includes(id) ? s.hidden : [...s.hidden, id] }
+        : { ...s, custom: s.custom.filter(f => f.id !== id) };
+      // 내장은 목록에서 숨겨질 뿐 정의가 남으므로(기존 데이터 보호) 가리키던 자리를 건드리지 않는다
+      if (builtin) return base;
+      /* 직접 등록한 폰트는 **정의째 사라진다** — 그것을 가리키던 자리를 함께 정리한다
+         (v2.0 사용자 발견: 「직접 등록한 폰트를 지웠더니 기본 세리프가 망가졌다」).
+         한글 페어로 물려 있으면 없는 짝을 계속 들고 있게 되고, 목록에는 사라진 이름이
+         그대로 남아 무엇이 적용된 것인지 알 수 없게 된다. */
+      const custom = base.custom.map(f => (f.pairId === id ? { ...f, pairId: undefined } : f));
+      const overrides = Object.fromEntries(
+        Object.entries(base.overrides).map(([k, v]) => [k, v.pairId === id ? { ...v, pairId: undefined } : v]),
+      ) as FontState['overrides'];
+      // 역할이 그 폰트를 쓰고 있었으면 그 역할의 기본값으로 (안 그러면 지정이 허공을 가리킨다)
+      const roles = Object.fromEntries((Object.keys(base.roles) as FontRole[]).map(r =>
+        [r, base.roles[r].id === id ? { ...base.roles[r], id: DEFAULT_ROLES[r].id } : base.roles[r]]),
+      ) as Record<FontRole, RoleSetting>;
+      return { ...base, custom, overrides, roles };
+    });
+  }, []);
+
+  /** 내장 폰트를 처음 상태로 (v2.0 사용자 발견) — 수정값(overrides)을 지운다.
+   *  잘못 들어간 값(엉뚱한 family·없는 페어)을 되돌릴 방법이 UI에 아예 없었다. */
+  const resetFont = useCallback((id: string) => {
+    apply(s => {
+      const { [id]: _drop, ...rest } = s.overrides;
+      return { ...s, overrides: rest };
+    });
   }, []);
 
   const restoreBuiltins = useCallback(() => apply(s => ({ ...s, hidden: [] })), []);
@@ -279,14 +330,15 @@ export function FontProvider({ children }: { children: React.ReactNode }) {
     const f = pool.find(x => x.id === id);
     if (!f) return undefined;
     const p = f.pairId ? pool.find(x => x.id === f.pairId) : undefined;
-    return p ? `${f.family}, ${p.family}` : f.family;
+    // 원본 스택으로 풀어 준다 — 안 그러면 「기본 세리프」가 지금 타이틀 폰트를 뜻하게 된다 (v2.0)
+    return p ? `${deVarFamily(f.family)}, ${deVarFamily(p.family)}` : deVarFamily(f.family);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [st]);
 
   return (
     <Ctx.Provider value={{
       fonts, hiddenCount: st.hidden.length, roles, setRole, rolesDirty, saveRoles, discardRoles,
-      addFont, addFontFile, setFontPair, updateFont, removeFont, restoreBuiltins, familyOf,
+      addFont, addFontFile, setFontPair, updateFont, removeFont, resetFont, restoreBuiltins, familyOf,
     }}>
       {children}
     </Ctx.Provider>

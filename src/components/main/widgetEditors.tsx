@@ -283,6 +283,18 @@ export function DecoEditor({ conf, onClose }: { conf: WidgetConf; onClose?: () =
         )}
       </div>
 
+      {/* 직접 크기 (v2.0 사용자 요청) — 비우면 지금처럼 자리(그리드 칸)에 맞춘다 */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="cp-lb">크기</span>
+        <KInput placeholder="가로 px (비우면 자동)" value={String((conf.settings.wPx as number | undefined) ?? '')}
+          onChange={e => { const n = parseInt(e.target.value, 10); set({ wPx: Number.isFinite(n) && n > 0 ? Math.min(n, 2000) : undefined }); }}
+          style={{ width: 140 }} />
+        <span style={{ color: 'var(--faint)', fontSize: 11 }}>×</span>
+        <KInput placeholder="세로 px (비우면 자동)" value={String((conf.settings.hPx as number | undefined) ?? '')}
+          onChange={e => { const n = parseInt(e.target.value, 10); set({ hPx: Number.isFinite(n) && n > 0 ? Math.min(n, 2000) : undefined }); }}
+          style={{ width: 140 }} />
+      </div>
+
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 10.5 }}
           onClick={() => { setSwapFor(null); document.getElementById(inputId)?.click(); }}>＋ 이미지 추가</button>

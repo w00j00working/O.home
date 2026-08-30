@@ -14,8 +14,8 @@ export const FEATURES: { href: string; label: string }[] = [
   { href: '/rels', label: '자관' },
   { href: '/rp', label: '역극' },
   { href: '/board', label: '리스트' },
-  { href: '/backup', label: '갤러리' },
-  { href: '/roadview', label: '로드비' },
+  { href: '/gallery', label: '갤러리' },
+  { href: '/loadb', label: '로드비' },
   { href: '/tchars', label: '캐릭터' },   // TRPG 캐릭터 — 자놀 캐릭터와는 href로 구분
   { href: '/trpg', label: '로그 백업' },
   { href: '/dotori', label: '도토리' },
@@ -27,6 +27,7 @@ export const FEATURES: { href: string; label: string }[] = [
   { href: '/threads', label: '감상타래' },
   { href: '/memo', label: '메모장' },
   { href: '/guest', label: '방명록' },
+  { href: '/intro', label: '소개' },
 ];
 
 export const DEFAULT_MENU: MenuItem[] = [
@@ -42,8 +43,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     label: '게시판',
     children: [
       { label: '리스트', href: '/board' },
-      { label: '갤러리', href: '/backup' },
-      { label: '로드비', href: '/roadview' },
+      { label: '갤러리', href: '/gallery' },
+      { label: '로드비', href: '/loadb' },
     ],
   },
   {

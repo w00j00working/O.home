@@ -9,7 +9,7 @@ import {
   RpRoom, RpMessage, RP_SEED, hexRgb, rpLastDate, rpHasNew,
   RpMessageRow, RP_MSG_KEY, RP_MSG_SEED, messagesFor, rpMarkRead, rpMemberIds,
 } from '@/lib/rpStore';
-import { Character, CHAR_SEED, Relation, REL_SEED, charGrant } from '@/lib/charStore';
+import { Character, CHAR_SEED, Relation, REL_SEED, charGrant, charWithAu } from '@/lib/charStore';
 import { Modal, ConfirmModal, useConfirmDelete } from '@/components/ui/Modal';
 import { KInput, KTextarea, KSelect, KCheck } from '@/components/ui/Kit';
 import { CroppedBlobImg } from '@/components/ui/CropEditor';
@@ -68,13 +68,25 @@ export default function RpPage() {
   // 발화자 선택 — 관리자는 기반 자관 멤버 전부(+자유 개설이면 자캐 전부),
   // 회원은 권한(grants — 역극 플레이/편집)이 부여된 캐릭터만 (3차 회원-캐릭터 연결, v1.9)
   const rel = rels.find(r => r.id === sel?.relId);
+  /* 이 방이 어느 AU로 노는지 (v2.0 사용자 요청) — 방 안에서 쓰는 캐릭터를 통째로
+     그 AU 프로필로 갈아 끼운다. 발화자 선택·말풍선·방 소제목이 모두 이 목록을 보므로
+     한 곳만 바꾸면 전부 따라온다. AU가 없으면 원래 목록 그대로다(참조도 같다).
+
+     **키는 `자관id:AU id`다** (v2.0 사용자 발견 — 「AU를 골랐는데 이름·사진이 원본으로 뜬다」).
+     캐릭터의 AU 프로필은 자관마다 따로 갖는 값이라 자관 id가 앞에 붙는다. 처음에 AU id만
+     넘겨서 프로필을 못 찾고 조용히 원본으로 떨어졌다 — 자관 상세가 쓰는 방식과 맞췄다. */
+  const auCharKey = sel?.relId && sel?.auId && sel.auId !== 'base' ? `${sel.relId}:${sel.auId}` : null;
+  const rpChars = useMemo(
+    () => (auCharKey ? chars.map(c => charWithAu(c, auCharKey)) : chars),
+    [chars, auCharKey],
+  );
   const speakChars = useMemo(() => {
     if (rel) {
-      const members = rel.members.map(m => chars.find(c => c.id === m.charId)).filter(Boolean) as Character[];
+      const members = rel.members.map(m => rpChars.find(c => c.id === m.charId)).filter(Boolean) as Character[];
       return isAdmin ? members : members.filter(c => !!charGrant(c, user?.id));
     }
-    return isAdmin ? chars.filter(c => c.own) : chars.filter(c => !!charGrant(c, user?.id));
-  }, [rel, chars, isAdmin, user?.id]);
+    return isAdmin ? rpChars.filter(c => c.own) : rpChars.filter(c => !!charGrant(c, user?.id));
+  }, [rel, rpChars, isAdmin, user?.id]);
 
   const [speaker, setSpeaker] = useState<string>('');   // charId | 'desc' (플레이어 발화는 없앴다, v2.0)
   const [pickOpen, setPickOpen] = useState(false);
@@ -107,7 +119,7 @@ export default function RpPage() {
     const m: RpMessage = {
       id: newId(), kind, charId: kind === 'char' ? speaker : undefined,
       // 발화 당시 소유 기록 — 캐릭터가 삭제돼도 재연동 시 어느 리스트에서 고를지 판별 (v1.9)
-      charOwn: kind === 'char' ? chars.find(c => c.id === speaker)?.own : undefined,
+      charOwn: kind === 'char' ? rpChars.find(c => c.id === speaker)?.own : undefined,
       authorId: user.id, text: t, date: new Date().toISOString(),
     };
     // 방은 건드리지 않는다 — 발화만 자기 행으로 (v2.0)
@@ -151,6 +163,7 @@ export default function RpPage() {
   const [newOpen, setNewOpen] = useState(false);
   const [nTitle, setNTitle] = useState('');
   const [nRel, setNRel] = useState('none');
+  const [nAu, setNAu] = useState('base');   // 고른 자관의 AU (v2.0 사용자 요청)
   const [nMembers, setNMembers] = useState<string[]>([]);
   const pool = useMembers();
   // 개설 모달에서 보여 줄 자동 참여자 (개설자 제외) — 권한자를 이름으로 (v2.0)
@@ -161,12 +174,16 @@ export default function RpPage() {
     return ids.filter(id => id !== user?.id)
       .map(id => pool.find(pp => pp.id === id)?.nickname ?? id);
   })();
+  // 고른 자관의 AU 목록 (기본 설정 줄은 위 셀렉트가 직접 넣는다)
+  const newRelAus = (rels.find(r => r.id === nRel)?.aus ?? []).filter(a => a.id !== 'base');
   const createRoom = () => {
     if (!user) return;
     if (!nTitle.trim()) { toast('방 제목을 입력해 주세요'); return; }
     const members = Array.from(new Set([user.id, ...nMembers]));
     const room: RpRoom = {
       id: newId(), title: nTitle.trim(), relId: nRel === 'none' ? undefined : nRel,
+      // 원래 설정(base)이면 남기지 않는다 — 예전 방과 같은 모습이라 되돌리기도 쉽다
+      auId: nRel !== 'none' && nAu !== 'base' ? nAu : undefined,
       memberIds: members, status: 'ongoing', isPublic: false,
       createdBy: user.id, created: new Date().toISOString(), lastRead: {}, messages: [],
     };
@@ -200,7 +217,7 @@ export default function RpPage() {
   const relinkCands = (own: boolean): Character[] => {
     const sameSide = (c: Character) => !!c.own === own;
     const relList = rel
-      ? (rel.members.map(mm => chars.find(c => c.id === mm.charId)).filter(Boolean) as Character[]).filter(sameSide)
+      ? (rel.members.map(mm => rpChars.find(c => c.id === mm.charId)).filter(Boolean) as Character[]).filter(sameSide)
       : [];
     return relList.length ? relList : chars.filter(sameSide);
   };
@@ -214,7 +231,7 @@ export default function RpPage() {
     const relink = <M extends RpMessage>(m: M): M => {
       const nid = m.charId ? relinkSel[m.charId] : undefined;
       if (!nid) return m;
-      return { ...m, charId: nid, charOwn: chars.find(c => c.id === nid)?.own };
+      return { ...m, charId: nid, charOwn: rpChars.find(c => c.id === nid)?.own };
     };
     setMsgRows(msgRows.map(x => (x.roomId === sel.id ? relink(x) : x)));
     setRooms(rooms.map(r => (r.id === sel.id ? { ...r, messages: r.messages.map(relink) } : r)));
@@ -244,7 +261,7 @@ export default function RpPage() {
       if (m.kind === 'desc') {
         return `<p style="text-align:center;color:#4a505a;line-height:1.8;margin:14px 0">${esc(m.text)}</p>`;
       }
-      const ch = chars.find(c => c.id === m.charId);
+      const ch = rpChars.find(c => c.id === m.charId);
       const name = ch?.name ?? '';
       const color = ch?.color ?? '#5d636d';
       return `<div style="margin:10px 0;line-height:1.7"><b style="color:${color};letter-spacing:.05em">${esc(name)}</b> — ${esc(m.text)}</div>`;
@@ -278,7 +295,7 @@ ${rows}
     const rel = rels.find(r => r.id === relId);
     if (!rel) return [];
     return rel.members
-      .map(m => chars.find(c => c.id === m.charId)?.name)
+      .map(m => rpChars.find(c => c.id === m.charId)?.name)
       .filter(Boolean) as string[];
   };
   /** 방 소제목 (v2.0 사용자 확정) — 페어면 캐릭터 이름 둘만, 다인관이면 자관명만.
@@ -296,8 +313,8 @@ ${rows}
   ].join(' · ');
 
   // 회원 계정(오너) 이름은 화면에 내지 않는다 — 계정은 접근 권한용일 뿐 (v2.0 사용자 요청).
-  const speakerLabel = speaker === 'desc' ? '지문 (DESC)' : (chars.find(c => c.id === speaker)?.name ?? '');
-  const speakerChar = chars.find(c => c.id === speaker);
+  const speakerLabel = speaker === 'desc' ? '지문 (DESC)' : (rpChars.find(c => c.id === speaker)?.name ?? '');
+  const speakerChar = rpChars.find(c => c.id === speaker);
 
   return (
     <section className={`page ${mFocus ? 'rp-focus' : ''}`}>
@@ -392,7 +409,7 @@ ${rows}
                       </div>
                     );
                   }
-                  const ch = chars.find(c => c.id === m.charId);
+                  const ch = rpChars.find(c => c.id === m.charId);
                   const name = ch?.name ?? '';
                   // 영역은 「보는 사람」 기준 (v2.0 사용자 확정): 내가 권한을 가진 캐릭터가 오른쪽,
                   // 아닌 캐릭터가 왼쪽. 관리자에게는 자캐(own)가 자기 캐릭터다.
@@ -490,10 +507,20 @@ ${rows}
             <label className="k-label" style={{ marginBottom: 5 }}>Title</label>
             <KInput value={nTitle} onChange={e => setNTitle(e.target.value)} />
           </div>
+          {/* 기반 자관 + 그 자관의 AU (v2.0 사용자 요청) — AU를 고르면 방 안의 캐릭터가
+              그 AU 프로필(이름·색·이미지)로 보인다. AU가 없는 자관에는 옆 칸이 뜨지 않는다 */}
           <div>
             <label className="k-label" style={{ marginBottom: 5 }}>기반 자관 (선택)</label>
-            <KSelect value={nRel} onChange={setNRel}
-              options={[{ value: 'none', label: '자유 개설 (자관 없음)' }, ...rels.map(r => ({ value: r.id, label: r.name }))]} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <KSelect value={nRel} onChange={v => { setNRel(v); setNAu('base'); }}
+                minWidth={160}
+                options={[{ value: 'none', label: '자유 개설 (자관 없음)' }, ...rels.map(r => ({ value: r.id, label: r.name }))]} />
+              {newRelAus.length > 0 && (
+                <KSelect value={nAu} onChange={setNAu} minWidth={140}
+                  options={[{ value: 'base', label: '원래 설정' },
+                    ...newRelAus.map(a => ({ value: a.id, label: a.label || 'AU' }))]} />
+              )}
+            </div>
           </div>
           <div>
             <label className="k-label" style={{ marginBottom: 7 }}>참여 회원</label>

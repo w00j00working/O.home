@@ -6,6 +6,7 @@
 // 원인을 알 수 있게 실패한 순간에 알려 준다.
 import { useEffect } from 'react';
 import { useToast } from '@/components/ui/Toast';
+import { explainDbError } from '@/lib/dbError';
 import { ERR_EVT } from '@/lib/settingStore';
 
 const LABEL: Record<string, string> = {
@@ -28,7 +29,10 @@ export function SettingSync() {
       if (now - last < 3000) return;
       last = now;
       const name = LABEL[d.key] ?? d.key;
-      toast(`${name} 설정을 서버에 저장하지 못했습니다 — 관리자 계정으로 로그인했는지, 보안 규칙을 게시했는지 확인해 주세요`);
+      const why = d.message ? explainDbError(d.message) : '';
+      toast(why
+        ? `${name} 설정을 저장하지 못했습니다 — ${why}`
+        : `${name} 설정을 서버에 저장하지 못했습니다 — 관리자 계정으로 로그인했는지, 보안 규칙을 게시했는지 확인해 주세요`);
     };
     window.addEventListener(ERR_EVT, h);
     return () => window.removeEventListener(ERR_EVT, h);

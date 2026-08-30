@@ -4,6 +4,7 @@ import React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useLocalList } from '@/lib/postStore';
+import { useSectionTitle } from '@/lib/sectionStore';
 import { DotoriItem, DOTORI_SEED } from '@/lib/galleryStore';
 import { DotoriForm } from '@/components/trpg/DotoriForm';
 import { useToast } from '@/components/ui/Toast';
@@ -15,20 +16,22 @@ export default function DotoriEditPage() {
   const { isAdmin } = useAuth();
   const toast = useToast();
   const [items, setItems, loaded] = useLocalList<DotoriItem>('ohome.dotori.v1', DOTORI_SEED);
+  // 큰 글씨 — 추가 섹션 항목이면 그 이름, 눌렀을 때도 그 목록으로 (v2.0 사용자 제보)
+  const tt = useSectionTitle('dotori', items.find(x => x.id === id)?.secId, 'EDIT DOTORI');
   const it = items.find(x => x.id === id);
 
   if (!loaded) return <section className="page" />;
   if (!isAdmin || !it) {
     return (
       <section className="page">
-        <div className="page-head"><PageTitle>DOTORI</PageTitle><p>항목을 찾을 수 없거나 권한이 없습니다</p></div>
+        <div className="page-head"><PageTitle href={tt.href}>{tt.title}</PageTitle><p>항목을 찾을 수 없거나 권한이 없습니다</p></div>
       </section>
     );
   }
 
   return (
     <section className="page">
-      <div className="page-head"><PageTitle>EDIT DOTORI</PageTitle><p>{it.name}</p></div>
+      <div className="page-head"><PageTitle href={tt.href}>{tt.title}</PageTitle><p>{it.name}</p></div>
       <DotoriForm initial={it}
         onCancel={() => router.push('/dotori')}
         onSave={v => {

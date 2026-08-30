@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import type { CropValue } from '@/components/ui/CropEditor';
 import type { Visibility } from './charStore';
 import { getRawSetting, setSetting } from './settingStore';
+import { MAIN_SEC } from './sectionStore';
 
 /* ---------- 타래 데이터 ---------- */
 export interface ThreadPost {
@@ -12,9 +13,14 @@ export interface ThreadPost {
   images: string[];          // IndexedDB 파일 id — 최대 4장 (1장=와이드, 2~4장=격자)
   phList?: string[];         // 데모 플레이스홀더 (시드 전용)
   date: string;              // ISO 작성 시각
+  /** 접기 (v2.0 사용자 요청 — 스포일러 1차 쿠션). 게시판 글 접기(6.2)와 같은 모양:
+   *  spoiler/adult는 정해진 문구, custom은 label을 그대로 보여 준다. 없으면 바로 보인다. */
+  fold?: { type: 'spoiler' | 'adult' | 'custom'; label?: string } | null;
 }
 
 export interface ThreadWork {
+  /** 소속 섹션 (v2.0) — 여러 개로 만들었을 때. 없으면 기본 섹션 */
+  secId?: string;
   id: string;
   title: string;             // 작품명 (필수)
   titleFontId?: string;      // 작품명 폰트 개별 지정 (5.1 폰트 라이브러리)
@@ -30,15 +36,31 @@ export interface ThreadWork {
 }
 
 /* ---------- 분류 + 기본 보기 설정 (4.17 — 환경설정에서 관리) ---------- */
+/* 분류는 섹션(여러 개로 만든 타래)마다 따로 가질 수 있다 (v2.0 사용자 요청) */
 export interface ThreadCat {
   id: string; label: string;
   // 뱃지 색 (v1.9 — 환경설정에서 지정, 미지정 시 기본 잉크 뱃지)
   bg?: string; border?: string; fg?: string;
 }
 export interface ThreadSettings {
+  /** 기본 섹션의 분류 — 예전 저장분이 그대로 여기 있다 */
   cats: ThreadCat[];
+  /** 섹션별 분류 (v2.0 사용자 요청) — 여러 개로 만든 타래는 다루는 게 달라 분류도 달라진다.
+   *  **정한 적이 없으면 기본 섹션 것을 그대로 쓴다** — 섹션을 만들자마자 분류가 빈칸이 되면
+   *  글부터 못 쓴다. 손대는 순간 그 섹션만의 목록이 생긴다. */
+  secCats?: Record<string, ThreadCat[]>;
   defaultView: 'thread' | 'list'; // 메뉴 진입 시 먼저 보일 보기 (v1.8 확정)
 }
+
+/** 그 섹션에서 쓸 분류 (v2.0) — 따로 정한 적이 없으면 기본 섹션 것 */
+export const threadCats = (s: ThreadSettings, secId: string): ThreadCat[] =>
+  (secId === MAIN_SEC ? s.cats : s.secCats?.[secId] ?? s.cats);
+
+/** 그 섹션의 분류를 담은 patch (v2.0) — 기본 섹션이면 예전 자리에 그대로 저장한다 */
+export const threadCatsPatch = (
+  s: ThreadSettings, secId: string, cats: ThreadCat[],
+): Partial<ThreadSettings> =>
+  (secId === MAIN_SEC ? { cats } : { secCats: { ...s.secCats, [secId]: cats } });
 
 export const DEFAULT_THREAD_SETTINGS: ThreadSettings = {
   cats: [

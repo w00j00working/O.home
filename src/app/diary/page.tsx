@@ -1,9 +1,10 @@
 'use client';
 // 다이어리 (4.14) — 아코디언 목록: 제목+무드+날짜 한 줄, 클릭 시 그 자리에서 펼침 ·
 // 무드 필터 · 페이지네이션 · 공개범위(비공개는 관리자만)
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useSectionParam, filterSection, sectionSetter } from '@/lib/sectionStore';
 import { useLocalList } from '@/lib/postStore';
 import { DiaryPost, DIARY_SEED, Mood, MOOD_SEED, moodTint } from '@/lib/diaryStore';
 import { renderBody } from '@/lib/sanitize';
@@ -46,10 +47,15 @@ function DiaryBody({ p, onOpen }: { p: DiaryPost; onOpen: (ids: string[], idx: n
   );
 }
 
-export default function DiaryPage() {
+function DiaryPageInner() {
   const router = useRouter();
   const { user, isAdmin } = useAuth();
-  const [posts, setPosts, loaded] = useLocalList<DiaryPost>('ohome.diary.v1', DIARY_SEED);
+  const [postsAll, setPostsAll, loaded] = useLocalList<DiaryPost>('ohome.diary.v1', DIARY_SEED);
+  // 여러 개로 만든 섹션 (v2.0) — 주소의 ?s= 가 가리키는 것만 보여 준다
+  const sec = useSectionParam('diary');
+  const posts = filterSection(postsAll, sec.id);
+  // 저장은 이 섹션 자리만 교체 — 걸러진 목록을 그대로 넘겨도 다른 섹션이 지워지지 않는다
+  const setPosts = sectionSetter(postsAll, sec.id, setPostsAll);
   const [moods] = useLocalList<Mood>('ohome.moods.v1', MOOD_SEED);
   const [open, setOpen] = useState<string | null>(null);
   const [fMood, setFMood] = useState('all');
@@ -102,7 +108,7 @@ export default function DiaryPage() {
   return (
     <section className="page">
       <div className="page-head">
-        <PageTitle>DIARY</PageTitle>
+        <PageTitle>{sec.id === 'main' ? 'DIARY' : sec.name}</PageTitle>
         <EditableDesc k="diary-desc" def="무드 일기 — 클릭하면 그 자리에서 펼쳐집니다" />
       </div>
 
@@ -219,4 +225,9 @@ export default function DiaryPage() {
       {lb && <Lightbox srcs={lb.srcs} index={lb.idx} onClose={() => setLb(null)} />}
     </section>
   );
+}
+
+/** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */
+export default function DiaryPage() {
+  return <Suspense fallback={<section className="page" />}><DiaryPageInner /></Suspense>;
 }

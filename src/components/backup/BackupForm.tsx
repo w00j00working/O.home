@@ -5,8 +5,9 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useLocalList, newId, FoldType } from '@/lib/postStore';
+import { useSectionParam, secStamp, MAIN_SEC, useSectionTitle } from '@/lib/sectionStore';
 import { BackupPost, BACKUP_SEED } from '@/lib/galleryStore';
-import { useBoardSettings, DEFAULT_GALLERY_CATS } from '@/lib/boardStore';
+import { useBoardSettings, DEFAULT_GALLERY_CATS, galleryCatsOf } from '@/lib/boardStore';
 import { useConfirmDelete } from '@/components/ui/Modal';
 import { Visibility } from '@/lib/charStore';
 import { KInput, KSelect, KRadio, KCheck, KDate } from '@/components/ui/Kit';
@@ -15,7 +16,7 @@ import { DragList } from '@/components/ui/DragList';
 import { CropEditor, CropValue } from '@/components/ui/CropEditor';
 import { putBlob, useBlobUrl } from '@/lib/blobStore';
 import { useToast } from '@/components/ui/Toast';
-import { EditableDesc } from '@/components/ui/PageText';
+import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 
 interface UpFile {
   id: string; name: string; size?: number;
@@ -47,7 +48,12 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
   const { user } = useAuth();
   const toast = useToast();
   const [posts, setPosts] = useLocalList<BackupPost>('ohome.backup.v1', BACKUP_SEED);
+  // 어느 갤러리에서 눌러 왔는지 (v2.0) — 새 글을 그 목록에 넣고, 끝나면 그 목록으로 돌아간다
+  const sec = useSectionParam('gallery');
   const isNew = !initial;
+  // 큰 글씨 — 추가 갤러리면 그 이름(메뉴 타이틀·이름이 우선), 누르면 그 목록으로 (v2.0 사용자 제보).
+  // 수정 주소에는 ?s=가 없으므로 고치는 글 자신의 소속(secId)에서 읽는다
+  const tt = useSectionTitle('gallery', initial ? (initial.secId ?? MAIN_SEC) : sec.id, isNew ? 'WRITE' : 'EDIT');
   const [title, setTitle] = useState(initial?.title ?? '');
   const [type, setType] = useState<'log' | 'single' | 'vlist'>(initial?.type ?? 'log');
   const [files, setFiles] = useState<UpFile[]>(() =>
@@ -59,8 +65,18 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
   const del = useConfirmDelete();   // 이미지 제거도 되돌릴 수 없어 경고를 거친다
   // 갤러리 말머리 — 환경설정 > 게시판 관리에서 관리 (v2.0)
   const { st: boardSet } = useBoardSettings();
-  const galleryCats = boardSet.galleryCats.length ? boardSet.galleryCats : DEFAULT_GALLERY_CATS;
+  /* **수정 중이면 그 글이 속한 곳이 기준이다** (v2.0 사용자 발견 — 포크 사용자 제보).
+     수정 주소에는 `?s=`가 없어서 주소만 보면 늘 기본 섹션으로 읽힌다. 그러면 분류 목록이
+     기본 섹션 것으로 바뀌어, 원래 고른 분류가 목록에 없으니 첫 항목으로 풀려 버린다. */
+  const secId = initial ? (initial.secId ?? MAIN_SEC) : sec.id;
+  // 갤러리마다 말머리가 다르다 (v2.0 사용자 요청) — 보고 있는 갤러리 것을 쓴다
+  const secCats = galleryCatsOf(boardSet, secId);
+  const galleryCats = secCats.length ? secCats : DEFAULT_GALLERY_CATS;
   const [category, setCategory] = useState(initial?.category ?? '');
+  // 태그 (v2.0 사용자 요청) — 쉼표로 구분해 입력, 저장할 때 배열로
+  const [tagsText, setTagsText] = useState((initial?.tags ?? []).join(', '));
+  const parseTags = (v: string) =>
+    [...new Set(v.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean))];
   // 목록이 로드되면 첫 말머리를 기본값으로 (등록 화면)
   useEffect(() => {
     if (!category && galleryCats[0]) setCategory(galleryCats[0].label);
@@ -75,7 +91,7 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
   if (!user) {
     return (
       <section className="page">
-        <div className="page-head"><h1>WRITE</h1><p>글쓰기는 로그인 후 이용할 수 있습니다</p></div>
+        <div className="page-head"><PageTitle href={tt.href}>{tt.title}</PageTitle><p>글쓰기는 로그인 후 이용할 수 있습니다</p></div>
       </section>
     );
   }
@@ -99,30 +115,30 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
         id: newId(), title: title.trim(), type,
         images: imageIds, phList: files.length ? [] : ['cool'],
         thumbCrop: files[0]?.crop, // 대표 이미지 크롭 (6.1)
-        desc, category, madeDate: madeDate || undefined,
+        desc, category, tags: parseTags(tagsText), madeDate: madeDate || undefined,
         date: new Date().toISOString(), author: user.nickname, authorId: user.id,
         visibility,
         fold: foldType === 'none' ? null : { type: foldType, label: foldType === 'custom' ? foldLabel : undefined },
       };
-      setPosts([p, ...posts]);
+      setPosts([{ ...p, ...secStamp(sec.id) }, ...posts]);
       toast('등록되었습니다 — 이미지는 이 브라우저에 실제 저장됩니다');
-      router.push(`/backup/${p.id}`);
+      router.push(`/gallery/${p.id}`);
     } else {
       setPosts(posts.map(x => x.id === initial.id ? {
         ...x, title: title.trim(), type,
         images: imageIds, phList: files.length ? [] : x.phList,
         thumbCrop: files[0]?.crop,
-        desc, category, madeDate: madeDate || undefined, visibility,
+        desc, category, tags: parseTags(tagsText), madeDate: madeDate || undefined, visibility,
         fold: foldType === 'none' ? null : { type: foldType, label: foldType === 'custom' ? foldLabel : undefined },
       } : x));
       toast('저장되었습니다');
-      router.push(`/backup/${initial.id}`);
+      router.push(`/gallery/${initial.id}`);
     }
   };
 
   return (
     <section className="page">
-      <div className="page-head"><h1>{isNew ? 'WRITE' : 'EDIT'}</h1><EditableDesc k={isNew ? 'backup-write-desc' : 'backup-edit-desc'} def={isNew ? '그림백업 글 작성' : '그림백업 글 수정'} /></div>
+      <div className="page-head"><PageTitle href={tt.href}>{tt.title}</PageTitle><EditableDesc k={isNew ? 'backup-write-desc' : 'backup-edit-desc'} def={isNew ? '그림백업 글 작성' : '그림백업 글 수정'} /></div>
       <div className="write-grid">
         {/* 좌: 본문 */}
         <div className="panel" style={{ padding: 24 }}>
@@ -200,6 +216,11 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
               <KSelect minWidth={120} value={category} onChange={setCategory}
                 options={galleryCats.map(c => ({ value: c.label, label: c.label }))} />
             </div>
+            {/* 태그 (v2.0 사용자 요청) — 목록·카드에 나열되고 검색에 걸린다 */}
+            <div className="form-row">
+              <label className="k-label" style={{ width: 70 }}>태그</label>
+              <KInput value={tagsText} onChange={e => setTagsText(e.target.value)} placeholder="쉼표로 구분" style={{ flex: 1 }} />
+            </div>
             <div className="form-row">
               <label className="k-label" style={{ width: 70 }}>제작일 (선택)</label>
               <KDate value={madeDate} onChange={setMadeDate} style={{ fontSize: 12, flex: 1 }} />
@@ -225,7 +246,7 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
           </div>
           <div className="form-actions">
             <button className="btn btn-onbk"
-              onClick={() => router.push(isNew ? '/backup' : `/backup/${initial.id}`)}>CANCEL</button>
+              onClick={() => router.push(isNew ? tt.href : `/gallery/${initial.id}`)}>CANCEL</button>
             <button className="btn btn-accent" onClick={post}>
               {isNew ? 'POST' : 'SAVE'}
             </button>

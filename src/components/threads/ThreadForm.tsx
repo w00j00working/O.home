@@ -3,7 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocalList, newId } from '@/lib/postStore';
-import { ThreadWork, THREAD_SEED, useThreadSettings } from '@/lib/threadStore';
+import { useSectionParam, secStamp, secQuery, MAIN_SEC } from '@/lib/sectionStore';
+import { ThreadWork, THREAD_SEED, useThreadSettings, threadCats } from '@/lib/threadStore';
 import { useFonts } from '@/lib/fontStore';
 import { putBlob, useBlobUrl } from '@/lib/blobStore';
 import { CropEditor, CropImg, CropValue } from '@/components/ui/CropEditor';
@@ -16,15 +17,29 @@ export function ThreadForm({ editId }: { editId?: string }) {
   const router = useRouter();
   const toast = useToast();
   const [works, setWorks, loaded] = useLocalList<ThreadWork>('ohome.threads.v1', THREAD_SEED);
+  // 어느 감상타래에서 눌러 왔는지 (v2.0)
+  const sec = useSectionParam('threads');
   const [settings] = useThreadSettings();
   const { fonts, familyOf } = useFonts();
   const orig = editId ? works.find(w => w.id === editId) : undefined;
+  /* **수정 중이면 그 글이 속한 곳이 기준이다** (v2.0 사용자 발견 — 포크 사용자 제보).
+     수정 주소에는 `?s=`가 없어서 주소만 보면 늘 기본 섹션으로 읽힌다. 그러면 분류 목록이
+     기본 섹션 것으로 바뀌어, 원래 고른 분류가 목록에 없으니 첫 항목으로 풀려 버린다. */
+  const secId = orig ? (orig.secId ?? MAIN_SEC) : sec.id;
+  // 분류는 섹션마다 따로 (v2.0 사용자 요청)
+  const cats = threadCats(settings, secId);
 
   const [title, setTitle] = useState(orig?.title ?? '');
   const [fontId, setFontId] = useState(orig?.titleFontId ?? 'default');
   const [author, setAuthor] = useState(orig?.author ?? '');
   const [role, setRole] = useState(orig?.authorRole ?? '');
-  const [catId, setCatId] = useState(orig?.catId ?? settings.cats[0]?.id ?? 'book');
+  const [catId, setCatId] = useState(orig?.catId ?? cats[0]?.id ?? 'book');
+  /* 섹션 목록은 한 박자 늦게 읽힌다 — 처음 렌더에서는 기본 섹션으로 보여 첫 분류가
+     이 타래에 없는 것으로 잡힐 수 있다(분류 칸이 「선택」인 채로 남았다).
+     **새로 쓸 때만** 목록 안의 것으로 맞춘다 — 수정 중인 글의 분류를 말없이 바꾸면 안 된다. */
+  useEffect(() => {
+    if (!orig && cats.length > 0 && !cats.some(c => c.id === catId)) setCatId(cats[0].id);
+  }, [cats, orig, catId]);
   const [vis, setVis] = useState<ThreadWork['visibility']>(orig?.visibility ?? 'public');
   // 포스터 (3:4) — 업로드 즉시 크롭 에디터 자동 오픈, 원본 무손실
   const [poster, setPoster] = useState<File | null>(null);
@@ -70,10 +85,10 @@ export function ThreadForm({ editId }: { editId?: string }) {
         ph: PHS[works.length % PHS.length],
         created: new Date().toISOString(), posts: [],
       };
-      setWorks([w, ...works]);
+      setWorks([{ ...w, ...secStamp(sec.id) }, ...works]);
       toast('타래가 시작되었습니다');
     }
-    router.push('/threads');
+    router.push('/threads' + secQuery('threads', secId));
   };
 
   return (
@@ -107,7 +122,7 @@ export function ThreadForm({ editId }: { editId?: string }) {
             <div>
               <KLabel>Category</KLabel>
               <KSelect minWidth={130} value={catId} onChange={setCatId}
-                options={settings.cats.map(c => ({ value: c.id, label: c.label }))} />
+                options={cats.map(c => ({ value: c.id, label: c.label }))} />
             </div>
             <div>
               <KLabel>Visibility</KLabel>
@@ -143,7 +158,7 @@ export function ThreadForm({ editId }: { editId?: string }) {
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-            <button className="btn btn-ghost" onClick={() => router.push('/threads')}>CANCEL</button>
+            <button className="btn btn-ghost" onClick={() => router.push('/threads' + secQuery('threads', secId))}>CANCEL</button>
             <button className="btn btn-dark" onClick={save}>{orig ? 'SAVE' : 'ADD'}</button>
           </div>
         </div>

@@ -4,6 +4,11 @@ export type Visibility = 'public' | 'member' | 'private'; // 공개범위 3단�
 
 export interface ColorChip { hex: string; label: string }
 
+/** 테마컬러 점 테두리 (v2.0 사용자 요청) — 미지정이면 지금까지의 옅은 테두리 그대로,
+ *  'none'이면 없음, hex면 그 색으로 1px */
+export const chipBorder = (bd?: string): string =>
+  (bd === 'none' ? 'none' : `inset 0 0 0 1px ${bd ?? 'rgba(0,0,0,.1)'}`);
+
 export interface CharTab {
   id: string;
   icon: string;          // 아이콘 문자 (업로드 아이콘은 후속)
@@ -20,11 +25,21 @@ export interface Character {
   // 상세 페이지 테마 (v1.9 사용자 확정) — custom이면 대표 테마색으로 홈 팔레트 임시 전환 (4.18 방식)
   themeMode?: 'default' | 'custom';
   colors: ColorChip[];   // 테마 컬러 나열
+  /** 테마컬러 점 테두리 (v2.0 사용자 요청) — 'none' = 없음 · hex = 그 색으로 1px.
+   *  미지정이면 지금까지와 같은 옅은 테두리(안 정한 홈은 모습이 안 바뀐다) */
+  colorBd?: string;
   colorTipMode?: 'hex' | 'both' | 'label'; // 색 점 툴팁 표기: hex / 이름+hex / 이름만
   specs: { label: string; value: string }[];
   tabs: CharTab[];       // 기본 정보 외 추가 탭
   basicHtml: string;     // 기본 정보 탭의 소개 본문 (HTML)
   visibility: Visibility;
+  /** 페이지 주소 별명 (v2.0 사용자 요청) — /chars/{별명}. 만들 때 정하는 주소(id)와 달리
+   *  **나중에 수정 화면에서 바꿀 수 있다.** 참조(자관 멤버·권한 등)는 언제나 id로 저장되므로
+   *  바꿔도 아무것도 끊어지지 않고, 옛 주소(id)로도 계속 열린다. */
+  slug?: string;
+  /** 어느 캐릭터 목록 것인지 (v2.0 사용자 요청) — 없으면 기본 목록.
+   *  **자관·역극이 캐릭터를 찾을 때는 소속을 보지 않는다** — 목록 화면에서만 갈린다 */
+  secId?: string;
   thumbClass: string;    // 데모 플레이스홀더 클래스
   thumbId?: string;      // 리스트 썸네일 (IndexedDB, 3:4 크롭)
   thumbCrop?: import("@/components/ui/CropEditor").CropValue;
@@ -99,6 +114,14 @@ export function charWithAu(c: Character, auKey?: string | null): Character {
 }
 
 export interface CharGrant { userId: string; level: 'play' | 'edit' }
+
+/** 이 자관의 멤버 캐릭터 중 하나라도 권한을 받은 회원인가 (v2.0) — 문답 숨김 판정 */
+export function hasRelGrant(
+  members: { charId: string }[], chars: Character[], userId?: string,
+): boolean {
+  if (!userId) return false;
+  return members.some(m => !!charGrant(chars.find(c => c.id === m.charId) ?? { grants: [] } as unknown as Character, userId));
+}
 
 /** 회원의 캐릭터 권한 — edit는 play를 포함 */
 export function charGrant(c: Character, userId?: string): 'play' | 'edit' | null {
@@ -198,6 +221,9 @@ export interface RelAuMember {
   nameSize?: number;
   quoteColor?: string;
   quoteMarkColor?: string;
+  /** 멤버 카드 얼굴칸 위치 — AU마다 따로 (v2.0 사용자 제보 — 원본에서 바꾸면 AU도 같이 바뀌었다).
+   *  안 정한 AU는 자관 기본(faceCrop)을 그대로 따른다 */
+  faceCrop?: import('@/components/ui/CropEditor').CropValue;
 }
 
 /** 이 AU에서 이 멤버를 어떻게 보여 줄지 — AU에 정해 둔 값이 있으면 그것, 없으면 자관 기본.
@@ -303,10 +329,17 @@ export interface RelAu {
   headerCrop?: import("@/components/ui/CropEditor").CropValue;
   // AU별 페이지 테마 (v1.9 사용자 확정) — 미지정이면 base(원본) 테마 따라가기
   theme?: { mode: 'site' | 'custom'; color?: string; tone?: 'dark' | 'light' };
+  /** 상세 하단의 역극/로그 연동 리스트 숨김 (v2.0 사용자 요청) — AU마다 따로.
+   *  원본(base)의 설정은 aus의 base 항목에 담긴다 */
+  hideRp?: boolean;
+  hideLog?: boolean;
 }
 
 export interface Relation {
   id: string;
+  /** 페이지 주소 별명 (v2.0 사용자 요청) — /rels/{별명}. 나중에 수정 화면에서 바꿀 수 있다.
+   *  참조(AU 프로필 키·로그 연동 등)는 언제나 id로 저장되므로 바꿔도 끊어지지 않는다. */
+  slug?: string;
   name: string;
   catchphrase: string;
   kind?: 'pair' | 'multi';         // 페어(2인) / 다인(3인+) — 등록 시 선택
@@ -346,10 +379,19 @@ export interface Relation {
   cp?: RelCpTag;                 // 자관 기본 CP/NCP (등록 시 선택, v1.9)
   fullFront?: string;            // 전신 모드에서 앞에 보일 캐릭터 id (v1.9 — 미리보기에서 클릭 선택)
   pairRight?: string;            // 페어에서 오른쪽 자리에 둘 캐릭터 id (v2.0 — 없으면 등록 순서대로)
+  /** 상세 중앙 일러가 어디를 보여 줄지 (v2.0 사용자 요청) — 리스트 썸네일(thumbCrop)과 별개.
+    *  **이미지 참조를 키로** 두어 여러 장을 각각 잡을 수 있고, AU의 일러도 같은 자리에 담긴다
+    *  (참조가 다르므로 섞이지 않는다). 원본은 건드리지 않는다. */
+   artCrops?: Record<string, import('@/components/ui/CropEditor').CropValue>;
   timeline: TlItem[];            // base AU의 타임라인
   questions: QaEntry[];          // base AU의 문답
   qaPool?: string[];             // base AU의 대기 질문 풀 (v1.9 — 랜덤 출제 대기)
   qaEnabled?: boolean;           // base AU의 QUESTIONS 섹션 사용 여부 (구버전은 questions 존재로 판정)
+  /** 문답 답변 숨기기 (v2.0 사용자 요청) — 질문은 그대로 두고 **답변 내용만** 가린다.
+   *  켜면 **관리자와 이 자관 캐릭터에 권한을 받은 회원만** 볼 수 있다(사용자 확정).
+   *  **화면에서 가리는 것일 뿐 완전한 차단이 아니다** — 답변은 공개로 저장돼 있어 주소를 직접
+   *  다루는 사람에게는 보일 수 있다. 설정 화면에도 그대로 적어 둔다. */
+  qaHide?: boolean;
 }
 
 export const CHAR_SEED: Character[] = [];
@@ -357,3 +399,12 @@ export const CHAR_SEED: Character[] = [];
 export const REL_SEED: Relation[] = [];
 
 export const findChar = (chars: Character[], id: string) => chars.find(c => c.id === id);
+
+/* ---------- 페이지 주소 별명 (v2.0 사용자 요청) ---------- */
+/** 주소로 항목 찾기 — id로도, 별명으로도 열린다 (별명을 바꿔도 옛 주소가 살아 있게) */
+export const findByKey = <T extends { id: string; slug?: string }>(list: T[], key: string) =>
+  list.find(x => x.id === key || (x.slug ?? '') === key);
+/** 이 캐릭터의 주소 — 별명을 정했으면 그것, 아니면 id */
+export const charPath = (c: { id: string; slug?: string }) => `/chars/${c.slug?.trim() || c.id}`;
+/** 이 자관의 주소 — 별명을 정했으면 그것, 아니면 id */
+export const relPath = (r: { id: string; slug?: string }) => `/rels/${r.slug?.trim() || r.id}`;

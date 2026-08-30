@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useLocalList } from '@/lib/postStore';
-import { Relation, REL_SEED, Character, CHAR_SEED } from '@/lib/charStore';
+import { Relation, REL_SEED, Character, CHAR_SEED, relPath } from '@/lib/charStore';
 import { SearchBar } from '@/components/ui/Kit';
 import { useToast } from '@/components/ui/Toast';
 import { CroppedBlobImg } from '@/components/ui/CropEditor';
@@ -51,7 +51,7 @@ export default function RelsPage() {
               onClick={() => {
                 if (editOn) return;
                 if (memberLocked) { toast('멤버공개 — 로그인 후 열람할 수 있습니다'); return; }
-                router.push(`/rels/${r.id}`);
+                router.push(relPath(r));
               }}>
               <div className="thumb" style={{ position: 'relative' }}>
                 <CroppedBlobImg fileRef={r.thumbId} crop={r.thumbCrop} ph={r.thumbClass}

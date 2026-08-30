@@ -1,8 +1,9 @@
 'use client';
 // TRPG 도토리 (4.15) — 시나리오 위시리스트 · 4열 카드 그리드 · 상태 필터 탭 · 카드에서 상태 전환
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useSectionParam, filterSection, sectionSetter, secQuery } from '@/lib/sectionStore';
 import { useLocalList } from '@/lib/postStore';
 import {
   DotoriItem, DotoriStatus, DOTORI_SEED, DOTORI_STATUS_KEYS, useTrpgSettings, dotoriBadgeStyle,
@@ -17,10 +18,15 @@ import { useCardSort, mergeOrder } from '@/lib/cardSort';
 
 type Tab = 'all' | DotoriStatus;
 
-export default function DotoriPage() {
+function DotoriPageInner() {
   const router = useRouter();
   const { isAdmin } = useAuth();
-  const [items, setItems, loaded] = useLocalList<DotoriItem>('ohome.dotori.v1', DOTORI_SEED);
+  const [itemsAll, setItemsAll, loaded] = useLocalList<DotoriItem>('ohome.dotori.v1', DOTORI_SEED);
+  // 여러 개로 만든 섹션 (v2.0) — 주소의 ?s= 가 가리키는 것만 보여 준다
+  const sec = useSectionParam('dotori');
+  const items = filterSection(itemsAll, sec.id);
+  // 저장은 이 섹션 자리만 교체 — 걸러진 목록을 그대로 넘겨도 다른 섹션이 지워지지 않는다
+  const setItems = sectionSetter(itemsAll, sec.id, setItemsAll);
   const [tab, setTab] = useState<Tab>('all');
   const [q, setQ] = useState('');
   const [delFor, setDelFor] = useState<DotoriItem | null>(null);
@@ -75,7 +81,7 @@ export default function DotoriPage() {
   return (
     <section className="page" onClick={() => setStatusFor(null)}>
       <div className="page-head">
-        <PageTitle>DOTORI</PageTitle>
+        <PageTitle>{sec.id === 'main' ? 'DOTORI' : sec.name}</PageTitle>
         <EditableDesc k="dotori-desc" def="가고 싶은 시나리오 저장함 — 도토리처럼 모아두기" />
       </div>
 
@@ -90,7 +96,7 @@ export default function DotoriPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SearchBar placeholder="시나리오·라이터·태그 검색" onSearch={setQ} />
-          {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/dotori/new')}>＋ ADD</button>}
+          {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/dotori/new' + secQuery('dotori', sec.id))}>＋ ADD</button>}
         </div>
       </div>
 
@@ -182,4 +188,9 @@ export default function DotoriPage() {
         ]} />
     </section>
   );
+}
+
+/** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */
+export default function DotoriPage() {
+  return <Suspense fallback={<section className="page" />}><DotoriPageInner /></Suspense>;
 }

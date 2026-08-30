@@ -143,6 +143,9 @@ a{color:inherit;text-decoration:none}
 .notif-menu .nt.rd{opacity:.48}
 .notif-menu .nset{border-top:1px solid rgba(127,127,127,.18);margin-top:6px;padding:8px 12px 4px;display:grid;gap:7px}
 .notif-menu .nset .row{display:flex;justify-content:space-between;align-items:center;font-size:calc(11px*var(--fs,1));color:var(--dd-fg);cursor:default}
+/* 켜짐은 포인트색으로 (v2.0 포크 제보 — 「켜진 건지 꺼진 건지 분간이 안 된다」).
+   기본 켜짐색(--ink 검정 알약)이 어두운 드롭다운 배경에 묻혀 꺼짐(회색)과 구별되지 않았다 */
+.notif-menu .k-toggle input:checked + .tr{background:var(--accent)}
 .badge-dot{position:relative;color:var(--top-fg);display:grid;place-items:center;width:32px;height:32px;border-radius:9px;transition:.15s}
 .badge-dot:hover{color:var(--top-hv,#fff)}
 .badge-dot svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;display:block}
@@ -266,10 +269,10 @@ a{color:inherit;text-decoration:none}
 .k-input:focus,.k-textarea:focus{border-color:var(--focus-bd,var(--steel-3));box-shadow:var(--focus-ring,0 0 0 3px rgba(60,67,77,.12))}
 .k-textarea{resize:none;min-height:86px;line-height:1.7;overflow:hidden}
 /* 밝은 영역 스크롤바: 얇고 연하게 (v1.8) */
-.k-textarea,.panel,.mng-box{scrollbar-color:#c9ccd2 transparent;scrollbar-width:thin}
+.k-textarea,.panel,.mng-box{scrollbar-color:var(--sb-thumb,#c9ccd2) transparent;scrollbar-width:thin}
 .k-textarea::-webkit-scrollbar,.panel ::-webkit-scrollbar,.mng-box ::-webkit-scrollbar{width:8px}
 .k-textarea::-webkit-scrollbar-track,.panel ::-webkit-scrollbar-track,.mng-box ::-webkit-scrollbar-track{background:transparent}
-.k-textarea::-webkit-scrollbar-thumb,.panel ::-webkit-scrollbar-thumb,.mng-box ::-webkit-scrollbar-thumb{background:#c9ccd2;border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+.k-textarea::-webkit-scrollbar-thumb,.panel ::-webkit-scrollbar-thumb,.mng-box ::-webkit-scrollbar-thumb{background:var(--sb-thumb,#c9ccd2);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
 .k-label{display:block;font-size:calc(11.5px*var(--fs,1));font-weight:700;color:var(--sub);margin:0 0 6px;letter-spacing:.05em}
 /* 체크박스 15px — 체크 정중앙 (v1.6) */
 /* 시각 정렬 보정 (v1.9) — line-height=박스 높이(글리프 위쏠림 해소) + 크기·보더를 정수 px로
@@ -369,7 +372,7 @@ a{color:inherit;text-decoration:none}
 /* 태그/뱃지 */
 .pill{display:inline-block;padding:4px 11px;border-radius:20px;font-size:calc(10.5px*var(--fs,1));letter-spacing:.04em;background:#eef0f2;color:var(--sub);border:1px solid var(--line);white-space:nowrap}
 .pill.dark{background:var(--ink);color:#fff;border-color:var(--ink)}
-.pill.red{background:rgba(166,58,69,.09);color:var(--accent);border-color:rgba(166,58,69,.25)}
+.pill.red{background:color-mix(in srgb,var(--accent) 9%,transparent);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 25%,transparent)}
 /* 컬러 스와치 */
 .swatches{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
 .sw{width:24px;height:24px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line),0 2px 6px rgba(0,0,0,.15);cursor:var(--cur-pointer,pointer);transition:.15s}
@@ -523,7 +526,7 @@ a{color:inherit;text-decoration:none}
 .postit{position:absolute;width:158px;padding:14px 14px 18px;font-size:calc(11.5px*var(--fs,1));line-height:1.65;color:#3c3a33;box-shadow:0 8px 20px rgba(0,0,0,.3);cursor:var(--cur-drag,grab);white-space:pre-line;user-select:none}
 .postit b{display:block;font-size:calc(9.5px*var(--fs,1));letter-spacing:.1em;color:rgba(0,0,0,.4);margin-bottom:6px}
 .postit:active{cursor:grabbing}
-.postit.hl{box-shadow:0 0 0 3px rgba(166,58,69,.5),0 8px 20px rgba(0,0,0,.3)}
+.postit.hl{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 50%,transparent),0 8px 20px rgba(0,0,0,.3)}
 .postit.ro{cursor:default}
 .memo-list-item{display:flex;gap:10px;padding:10px 12px;border-radius:9px;cursor:var(--cur-pointer,pointer);transition:.13s;align-items:flex-start}
 .memo-list-item:hover{background:#f0f1f4}
@@ -563,7 +566,19 @@ a{color:inherit;text-decoration:none}
 .thr-post:hover .hv-actions{opacity:1;pointer-events:auto}
 .thr-post .hv-actions button{font-size:10px;letter-spacing:.06em;color:var(--sub);padding:3px 8px;border-radius:6px}
 .thr-post .hv-actions button:hover{color:var(--ink);background:#fff}
-.thr-post .hv-actions button.del:hover{color:var(--accent);background:rgba(166,58,69,.08)}
+.thr-post .hv-actions button.del:hover{color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+/* 타래 글 접기 쿠션 (v2.0 사용자 요청 — 스포일러 1차 쿠션) */
+.thr-fold{border:1.5px dashed var(--line);border-radius:10px;padding:13px 16px;margin-bottom:8px;
+  cursor:var(--cur-pointer,pointer);background:color-mix(in srgb,var(--accent) 4%,transparent);transition:.15s}
+.thr-fold:hover{background:color-mix(in srgb,var(--accent) 9%,transparent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.thr-fold b{display:block;font-size:calc(12.5px*var(--fs,1));color:var(--ink);margin-bottom:2px}
+.thr-fold span{font-size:calc(10.5px*var(--fs,1));color:var(--faint)}
+.thr-refold{font-size:calc(10px*var(--fs,1));color:var(--faint);letter-spacing:.06em;padding:2px 0;display:block;margin-bottom:2px}
+.thr-refold:hover{color:var(--accent)}
+/* 타래 댓글 (v2.0 사용자 요청) — 게시판 댓글과 같은 .cmt 줄을 이 블록 안에 담는다 */
+.thr-cmts{border-top:1px solid var(--line);padding:16px 18px 6px}
+.thr-cmts h4{font-size:calc(11.5px*var(--fs,1));letter-spacing:.12em;color:var(--faint);margin-bottom:13px}
+.thr-cmts h4 span{color:var(--accent)}
 .thr-imgs{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:420px;margin-bottom:8px}
 .thr-imgs .im{aspect-ratio:16/10;border-radius:9px;overflow:hidden;cursor:var(--cur-pointer,pointer);position:relative}
 .thr-imgs.one{grid-template-columns:1fr}
@@ -604,9 +619,13 @@ a{color:inherit;text-decoration:none}
 
 /* 페이지네이션 (v1.6) */
 .pager{display:flex;justify-content:center;gap:5px;margin-top:18px}
-.pager button{min-width:30px;height:30px;border-radius:8px;font-size:calc(11.5px*var(--fs,1));color:#aab0ba;background:rgba(255,255,255,.08);border:1px solid var(--line-dark);transition:.15s;padding:0 8px}
-.pager button:hover{color:#fff;background:rgba(255,255,255,.16)}
-.pager button.on{background:var(--panel-solid);color:var(--ink);border-color:transparent}
+/* 페이지 전환 버튼은 **탭과 같은 색 설정**을 따른다 (v2.0 사용자 요청).
+   예전에는 어두운 배경을 전제한 값이 박혀 있어(#aab0ba·흰색 반투명) 디자인 탭에서
+   색을 바꿔도 여기만 그대로였다. 선택 안 된 것은 --seg-bg/--seg-fg,
+   선택된 것은 --btn-dark/--btn-dark-fg — 탭(.mini-seg)이 쓰는 바로 그 값들이다 */
+.pager button{min-width:30px;height:30px;border-radius:8px;font-size:calc(11.5px*var(--fs,1));color:var(--seg-fg,#8a8f98);background:var(--seg-bg,#f0f1f3);border:1px solid transparent;transition:.15s;padding:0 8px}
+.pager button:hover{color:var(--btn-dark,var(--ink))}
+.pager button.on{background:var(--btn-dark,var(--ink));color:var(--btn-dark-fg,#fff);border-color:transparent}
 .pager button:disabled{opacity:.35;pointer-events:none}
 
 /* 모달/오버레이 (7장 — alert/confirm 대체) */
@@ -956,7 +975,9 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
    하단 여백을 계산값으로 고정 — viewH(100vh-58) - top(10) - artH(100vh-150) = 82px */
 .page-char-detail{padding-bottom:82px}
 .profile-info{padding:24px;overflow:auto}
-.profile-info h3{font-family:var(--serif);font-size:calc(19px*var(--fs,1));letter-spacing:.14em;margin-bottom:4px}
+/* 세리프는 **탭 제목에만** (v2.0 사용자 제보) — 예전 `.profile-info h3`는 본문(.prose)에
+   직접 쓴 h3까지 잡아서, 본문 폰트를 바꿔도 h3만 세리프로 남았다 */
+.profile-info h3.tab-tt{font-family:var(--serif);font-size:calc(19px*var(--fs,1));letter-spacing:.14em;margin-bottom:4px}
 .profile-info .sub{font-size:calc(11px*var(--fs,1));color:var(--faint);letter-spacing:.1em;margin-top:7px;margin-bottom:16px}
 .spec{display:grid;grid-template-columns:76px 1fr;gap:7px 10px;font-size:calc(12.5px*var(--fs,1));margin-bottom:18px}
 .spec dt{color:var(--faint);letter-spacing:.06em}
@@ -1095,9 +1116,23 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .rel-tabs > button{font-family:var(--serif);letter-spacing:.2em;font-size:calc(15px*var(--fs,1));color:var(--faint);padding:6px 14px 12px;border-bottom:2px solid transparent;margin-bottom:-1px;transition:.15s}
 .rel-tabs > button:hover{color:var(--ink)}
 .rel-tabs > button.on{color:var(--ink);border-bottom-color:var(--ink)}
+/* 모바일 — 글자 대신 픽토그램만 (v2.0 사용자 요청). 좁은 폭에서 버튼 글씨가 줄줄이 늘어져
+   탭 줄이 두 줄로 넘어가던 것. 탭은 T·Q로 줄이고 갭만 넉넉히 줘 구분되게 한다.
+   버튼들은 인라인 style로 padding을 갖고 있어 여기서는 !important로 눌러야 한다 */
+.lb-m{display:none}
+@media (max-width:620px){
+  .lb-pc{display:none}
+  .lb-m{display:inline}
+  .rel-tabs{gap:16px}
+  .rel-tabs > button{padding:6px 2px 10px;letter-spacing:0}
+  .rel-tabs .btn{padding:0 11px !important;min-width:40px;font-size:calc(14px*var(--fs,1)) !important}
+}
 /* 페어 문답 (QUESTIONS, v1.8) — PC 기준 세로 700px */
 .qa-wrap{display:grid;grid-template-columns:1fr 290px;gap:18px;height:700px}
-.qa-today{display:flex;flex-direction:column;overflow:auto;padding-right:6px;scrollbar-color:#c9ccd2 transparent;scrollbar-width:thin}
+/* 답변만 스크롤하고 입력란은 아래에 고정 (v2.0 사용자 발견) — 예전엔 입력란까지 한 상자에 들어
+   있어 답변이 길어지면 입력란이 밀려 UI가 어긋났다 */
+.qa-today{display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.qa-answers{flex:1;min-height:0;overflow:auto;padding-right:6px;scrollbar-color:var(--sb-thumb,#c9ccd2) transparent;scrollbar-width:thin;display:flex;flex-direction:column}
 .qa-no{font-size:calc(10px*var(--fs,1));letter-spacing:.3em;color:var(--faint)}
 .qa-q{font-family:'Noto Serif KR',serif;font-size:calc(20px*var(--fs,1));font-weight:700;line-height:1.5;margin:6px 0 4px}
 /* 질문에 대한 오너 설명 — 질문 바로 아래, 답변보다 한 톤 낮게 (v2.0) */
@@ -1125,7 +1160,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
   box-shadow:0 10px 30px rgba(0,0,0,.35);text-align:left;white-space:normal;
 }
 .qa-ans.r .bub[data-note]:hover::after{left:auto;right:0}
-.qa-input{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:11px;align-items:stretch}
+.qa-input{flex-shrink:0;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:11px;align-items:stretch}
 .qa-input .char-pick{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:var(--cur-pointer,pointer);flex-shrink:0}
 .qa-input .char-pick .f{width:56px;height:56px;border-radius:12px;overflow:hidden} /* 입력칸 높이에 맞게 확대 (v1.9 사용자 피드백) */
 .qa-input .char-pick small{font-size:calc(11px*var(--fs,1));font-weight:600;color:var(--ink);white-space:nowrap} /* 이름 확대 (v1.9 사용자 피드백) */
@@ -1133,13 +1168,19 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .qa-search{display:flex;align-items:center;gap:7px;border:1.5px solid var(--line);border-radius:9px;background:#fff;padding:7px 11px;margin-bottom:11px}
 .qa-search input{border:none;outline:none;font-size:calc(12px*var(--fs,1));flex:1;background:none;color:var(--ink)}
 .qa-search span{color:var(--faint);font-size:calc(13px*var(--fs,1))}
-.qa-scroll{overflow:auto;flex:1;scrollbar-color:#c9ccd2 transparent;scrollbar-width:thin}
+.qa-scroll{overflow:auto;flex:1;scrollbar-color:var(--sb-thumb,#c9ccd2) transparent;scrollbar-width:thin}
+/* 숨긴 답변 — 답변 영역 통째로 한 줄만 (v2.0 사용자 확정). 말풍선을 하나씩 가리면
+   몇 명이 무슨 순서로 답했는지가 드러나므로 개수 자체를 보여 주지 않는다 */
+.qa-locked{flex:1;display:grid;place-items:center;color:var(--faint);letter-spacing:.22em;font-size:calc(12.5px*var(--fs,1))}
 .qa-item{padding:10px 11px;border-radius:9px;cursor:var(--cur-pointer,pointer);transition:.13s;margin-bottom:2px}
 .qa-item:hover{background:#f0f1f4}
-.qa-item.on{background:var(--ink);color:#fff}
+/* 고른 질문 — 진한 버튼과 같은 색을 따라간다 (v2.0 사용자 요청).
+   예전엔 --ink(가장 짙은 글씨색)를 그대로 써서 다른 선택 상태보다 유난히 짙었다.
+   진한 버튼색은 디자인 탭에서 정하는 값이라, 홈 색을 바꾸면 여기도 함께 따라온다 */
+.qa-item.on{background:var(--btn-dark,var(--ink));color:var(--btn-dark-fg,#fff)}
 .qa-item b{font-size:calc(12px*var(--fs,1));display:block;line-height:1.5;font-weight:600}
 .qa-item small{font-size:calc(10px*var(--fs,1));color:var(--faint)}
-.qa-item.on small{color:#aab0ba}
+.qa-item.on small{color:var(--btn-dark-fg,#fff);opacity:.72}
 /* 자관 연동 리스트(역극·TRPG)도 중앙 좁힘 */
 .page-rel-detail .g2{max-width:1010px;margin-left:auto;margin-right:auto}
 
@@ -1160,8 +1201,11 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .cal-side .panel.widget h4{margin-bottom:7px}
 .cal-side .dday-row{padding:4px 0}
 .cal-cell.today{border:1.5px solid var(--ink)}
-/* 지금 고른 날짜 (v2.0) — 오른쪽 카드가 이 날짜의 일정을 보여 준다 */
-.cal-cell.picked{border-color:var(--accent);box-shadow:0 0 0 2px rgba(166,58,69,.16)}
+/* 지금 고른 날짜 (v2.0) — 오른쪽 카드가 이 날짜의 일정을 보여 준다.
+   표시는 **다른 포커스 표시와 같은 설정**(디자인 > 입력 포커스)을 따른다 (v2.0 사용자 발견).
+   예전에는 링 색이 기본 강조색(빨강)으로 박혀 있어, 강조색을 바꾸면 테두리만 바뀌고
+   번지는 링은 빨간 채로 남아 어긋나 보였다 */
+.cal-cell.picked{border-color:var(--focus-bd,var(--accent));box-shadow:var(--focus-ring,0 0 0 2px rgba(166,58,69,.16))}
 /* 달력 칸에는 위에서 3개까지 — 나머지 개수만 표시 */
 .cal-cell .ev.more{background:transparent;color:var(--faint);font-weight:700;padding-left:0}
 .cal-cell .ev{margin-top:4px;font-size:calc(11.5px*var(--fs,1));padding:3px 7px;border-radius:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600} /* 일정 글씨 확대 9.5→11.5 (v1.9 사용자 피드백) */
@@ -1321,7 +1365,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 /* 카드 관리 버튼 — 이미지 호버 시에만 */
 .dt-actions{position:absolute;top:8px;left:8px;z-index:3;display:flex;gap:5px}
 .dt-actions button{font-size:calc(10px*var(--fs,1));padding:4px 9px;border-radius:999px;background:rgba(15,17,20,.55);color:#dfe2e7}
-.dt-actions button.del{background:rgba(166,58,69,.75);color:#fff}
+.dt-actions button.del{background:color-mix(in srgb,var(--accent) 75%,transparent);color:#fff}
 .dt-card:hover .hv-actions{opacity:1;pointer-events:auto}
 /* 카드 안 태그 — 부모 kw-row의 프로필용 패딩 제거 (좌측 정렬) */
 .dt-card .kw-row{padding:0}
@@ -1387,7 +1431,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .roadview-item .art .meta b{display:block;font-size:calc(15px*var(--fs,1));letter-spacing:.06em}
 /* 댓글 입력창은 항상 사이드 맨 아래 — 그림이 세로로 길어도 리스트가 내부 스크롤로 흡수 */
 .cmt-side{display:flex;flex-direction:column;border-left:1px solid var(--line);min-height:0;height:100%}
-.cmt-side .list{flex:1;min-height:120px;padding:16px;overflow:auto;scrollbar-color:#c9ccd2 transparent;scrollbar-width:thin}
+.cmt-side .list{flex:1;min-height:120px;padding:16px;overflow:auto;scrollbar-color:var(--sb-thumb,#c9ccd2) transparent;scrollbar-width:thin}
 .roadview-item{grid-auto-rows:minmax(0,auto)}
 .roadview-item .cmt-side{max-height:none}
 
@@ -1485,6 +1529,16 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .panel.flush{overflow:hidden;padding:4px 0}
 .board-list{padding:6px 0}
 .brow{display:grid;grid-template-columns:70px 1fr 90px 90px;gap:12px;align-items:center;padding:13px 20px;border-bottom:1px solid var(--line);font-size:calc(13px*var(--fs,1));cursor:var(--cur-pointer,pointer);transition:.13s}
+/* 제목 칸 안에서 태그를 오른쪽 끝에 (v2.0 사용자 요청 — 작성자 왼쪽).
+   칸을 따로 만들면 행마다 그리드가 독립이라 작성자 열이 어긋난다 — 제목 칸 안에서 민다 */
+.brow .tcell{min-width:0;display:flex;align-items:center;gap:10px}
+.brow .tcell>b{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.brow .tags{flex-shrink:0;max-width:45%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:calc(10.5px*var(--fs,1))}
+.brow .tags i{font-style:normal;color:color-mix(in srgb,var(--accent) 65%,var(--faint));margin-left:7px}
+.brow .tags i:first-child{margin-left:0}
+@media (max-width:640px){.brow .tags{display:none}} /* 좁은 화면에서는 제목 우선 */
+/* 메타 줄에 섞어 쓰는 태그 표기 (v2.0 — 갤러리 카드·리스트·상세) */
+.tag-in{font-style:normal;color:color-mix(in srgb,var(--accent) 65%,var(--faint));margin-left:7px}
 .brow:last-child{border-bottom:none}
 .brow:hover{background:#f4f5f7}
 .brow .cat{font-size:calc(10px*var(--fs,1));text-align:center}
@@ -1508,6 +1562,9 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 }
 /* 본문 렌더 (MD/HTML 공통) */
 .post-body{font-size:calc(14.5px*var(--fs,1));line-height:1.85;color:#2c3037;word-break:break-word}
+/* 빈 문단도 한 줄 높이 유지 (v2.0 사용자 제보 — 「엔터가 잘 안 먹힘」).
+   에디터의 빈 줄은 <p></p>로 저장되는데 그대로는 높이가 0이라 발행 글에서 줄이 사라진다 */
+.post-body p:empty::after,.prose p:empty::after,.html-body p:empty::after{content:"\00a0"}
 .post-body h1,.post-body h2,.post-body h3{margin:18px 0 8px;line-height:1.4}
 .post-body h1{font-size:calc(22px*var(--fs,1))}.post-body h2{font-size:calc(19px*var(--fs,1))}.post-body h3{font-size:calc(16.5px*var(--fs,1))}
 .post-body p{margin:8px 0}

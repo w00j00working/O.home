@@ -1,10 +1,12 @@
 'use client';
 // 메인 위젯 렌더러 (4.0) — DIARY/LATEST/UPCOMING 등은 해당 기능(2·3차) 전까지 데모 데이터
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WidgetConf, useMainStore, WIDGET_META, decoSlides } from '@/lib/mainStore';
 import { useAuth } from '@/lib/auth';
-import { useMenuSettings, buildMenu } from '@/lib/menuStore';
+import { boardEntries, useMenuSettings, buildMenu, canViewHref } from '@/lib/menuStore';
+import { sectionHref, MAIN_SEC, useSections, sectionMenuEntries } from '@/lib/sectionStore';
+import { useCustomLinks, linkEntries } from '@/lib/linkStore';
 import { useBoards } from '@/lib/boardStore';
 import { Modal } from '@/components/ui/Modal';
 import { KTextarea, KSelect, KStep, KCheck } from '@/components/ui/Kit';
@@ -105,18 +107,25 @@ export function MenuListWidget() {
   const [menuSet, , menuLoaded] = useMenuSettings(); // 메뉴 관리 (5.2) 반영
   const { boards, loaded: boardsLoaded } = useBoards(); // 다중 게시판 (5.2)
   const { user: wUser, isAdmin: wIsAdmin } = useAuth(); // 공개범위 필터 (v1.9)
+  const { map: wSecMap } = useSections();      // 여러 개로 만든 섹션 (v2.0 — 빠져 있었다)
+  const { links: wLinks } = useCustomLinks();  // 커스텀 링크 (v2.0)
   return (
     <div className="panel menu-list wgt-menu">
-      {(menuLoaded && boardsLoaded ? buildMenu(menuSet, boards, { loggedIn: !!wUser, isAdmin: wIsAdmin }) : []).map(m =>
+      {(menuLoaded && boardsLoaded
+        ? buildMenu(menuSet, [...boardEntries(boards), ...sectionMenuEntries(wSecMap), ...linkEntries(wLinks)], { loggedIn: !!wUser, isAdmin: wIsAdmin })
+        : []).map(m =>
         m.children ? (
           <div key={m.label} className={`mgrp ${open === m.label ? 'open' : ''}`}>
             <a onClick={() => setOpen(o => (o === m.label ? null : m.label))}>{m.label}</a>
             <div className="msub">
-              {m.children.map(c => <a key={c.href} onClick={() => router.push(c.href)}>{c.label}</a>)}
+              {/* 커스텀 링크의 외부 주소는 새 창 (v2.0) — 상단 메뉴와 같은 규칙 */}
+              {m.children.map(c => (
+                <a key={c.href} onClick={() => (/^https?:\/\//.test(c.href) ? window.open(c.href, '_blank') : router.push(c.href))}>{c.label}</a>
+              ))}
             </div>
           </div>
         ) : (
-          <a key={m.label} onClick={() => router.push(m.href!)}>{m.label}</a>
+          <a key={m.label} onClick={() => (/^https?:\/\//.test(m.href!) ? window.open(m.href!, '_blank') : router.push(m.href!))}>{m.label}</a>
         )
       )}
     </div>
@@ -153,14 +162,20 @@ export function MemoWidget({ conf }: { conf: WidgetConf }) {
 /* ---------- DIARY (최근 일기 — 실데이터, 4.14) ---------- */
 export function DiaryWidget() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [posts] = useLocalList<DiaryPost>('ohome.diary.v1', DIARY_SEED);
   const [moods] = useLocalList<Mood>('ohome.moods.v1', MOOD_SEED);
+  // 메뉴에서 비공개로 둔 다이어리는 위젯에도 안 나온다 (v2.0 사용자 발견 — 위젯으로 새던 것)
+  const [menuSet] = useMenuSettings();
+  const viewer = { loggedIn: !!user, isAdmin };
+  const canSee = canViewHref(menuSet, '/diary', viewer);
   // 비공개 일기는 위젯에 절대 노출되지 않음 — 관리자여도 (4.14)
   const latest = posts
+    .filter(p => canViewHref(menuSet, sectionHref('diary', p.secId ?? MAIN_SEC), viewer))
     .filter(p => p.visibility === 'public' || (p.visibility === 'member' && !!user))
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 3);
+  if (!canSee) return null;   // 메뉴가 비공개면 위젯 자체를 띄우지 않는다 (v2.0)
   return (
     <div className="panel widget" style={{ margin: 0 }}>
       <h4>DIARY <span className="more" onClick={() => router.push('/diary')}>더보기 ›</span></h4>
@@ -181,23 +196,33 @@ export function DiaryWidget() {
 /* ---------- LATEST (최신 그림 — 로드비 + 갤러리 통합 최신 3장, v1.9 사용자 피드백) ---------- */
 export function LatestWidget() {
   const router = useRouter();
+  const { user, isAdmin } = useAuth();
   const [roads] = useLocalList<RoadItem>('ohome.road.v1', ROAD_SEED);
   const [backups] = useLocalList<BackupPost>('ohome.backup.v1', BACKUP_SEED);
+  /* 메뉴에서 비공개로 둔 곳은 빼고 모은다 (v2.0 사용자 발견) — 로드비와 갤러리를 함께 보여 주는
+     위젯이라 **소스별로** 따진다. 한쪽만 비공개면 나머지는 그대로 나온다. */
+  const [menuSet] = useMenuSettings();
+  const viewer = { loggedIn: !!user, isAdmin };
+  const seeRoad = canViewHref(menuSet, '/loadb', viewer);
+  const seeGal = canViewHref(menuSet, '/gallery', viewer);
   const latest = [
-    ...roads.map(it => ({
+    ...(seeRoad ? roads : []).filter(it => canViewHref(menuSet, sectionHref('roadview', it.secId ?? MAIN_SEC), viewer)).map(it => ({
       id: `r-${it.id}`, date: it.date, ref: it.imgId ?? it.imgUrl, ph: it.ph,
-      href: '/roadview', tip: `로드비 · No.${String(it.no ?? 0).padStart(3, '0')}`,
+      href: '/loadb', tip: `로드비 · No.${String(it.no ?? 0).padStart(3, '0')}`,
     })),
     // 갤러리 — 전체공개 + 접기 없는 게시물의 대표(첫) 이미지
-    ...backups.filter(p => p.visibility === 'public' && !p.fold).map(p => ({
+    ...(seeGal ? backups : [])
+      .filter(p => canViewHref(menuSet, sectionHref('gallery', p.secId ?? MAIN_SEC), viewer))
+      .filter(p => p.visibility === 'public' && !p.fold).map(p => ({
       id: `b-${p.id}`, date: p.date, ref: p.images[0], ph: p.phList[0] ?? 'cool',
-      href: `/backup/${p.id}`, tip: `갤러리 · ${p.title}`,
+      href: `/gallery/${p.id}`, tip: `갤러리 · ${p.title}`,
     })),
   ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
   const phFallback = ['cool', 'warm', 'red'];
+  if (!seeRoad && !seeGal) return null;   // 둘 다 비공개면 위젯 자체를 띄우지 않는다 (v2.0)
   return (
     <div className="panel widget" style={{ margin: 0 }}>
-      <h4>LATEST <span className="more" onClick={() => router.push('/backup')}>더보기 ›</span></h4>
+      <h4>LATEST <span className="more" onClick={() => router.push('/gallery')}>더보기 ›</span></h4>
       <div className="latest-grid">
         {[0, 1, 2].map(i => {
           const it = latest[i];
@@ -308,11 +333,20 @@ export function TodoWidget({ conf }: { conf: WidgetConf }) {
 export function UpcomingWidget() {
   const router = useRouter();
   const { user, isAdmin } = useAuth();
-  const { st } = useSched();
+  const { st } = useSched();   // 인자 없이 = 모든 스케줄러 (v2.0 — 어느 것이든 다가오는 일정은 다가온다)
+  /* 메뉴에서 비공개로 둔 스케줄러는 위젯에도 안 나온다 (v2.0).
+     스케줄러를 여러 개 만들 수 있으므로 **일정마다 그 스케줄러 기준**으로 따지고,
+     볼 수 있는 스케줄러가 하나도 없을 때만 위젯을 통째로 감춘다. */
+  const [menuSet] = useMenuSettings();
+  const { list } = useSections();
+  const viewer = { loggedIn: !!user, isAdmin };
+  const seeSec = (secId?: string) => canViewHref(menuSet, sectionHref('sched', secId ?? MAIN_SEC), viewer);
+  const canSee = list('sched').some(s => seeSec(s.id));
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   // 오늘 포함 이후 일정 — 매년 반복은 올해 날짜로 환산해 가장 가까운 3개
   const upcoming = st.events
+    .filter(e => seeSec(e.secId))
     .filter(e => isAdmin || e.visibility === 'public' || (e.visibility === 'member' && !!user))
     .map(e => {
       let d = e.start;
@@ -325,6 +359,7 @@ export function UpcomingWidget() {
     .filter(x => x.d >= todayStr)
     .sort((a, b) => a.d.localeCompare(b.d))
     .slice(0, 3);
+  if (!canSee) return null;   // 메뉴가 비공개면 위젯 자체를 띄우지 않는다 (v2.0)
   return (
     <div className="panel widget" style={{ cursor: 'var(--cur-pointer,pointer)' }} onClick={() => router.push('/cal')}>
       <h4>UPCOMING <span className="more">더보기 ›</span></h4>
@@ -400,16 +435,43 @@ export function FreeTextWidget({ conf }: { conf: WidgetConf }) {
 /* ---------- 장식 이미지 — 패널 없이 이미지만 (장식용) ---------- */
 /** 비율 유지(안 잘림) 렌더 — cover(크롭)와 선택제 (v1.9 사용자 요청)
  *  둥근 모서리는 위젯 박스가 아니라 **이미지 크기**에 맞춰 적용 (v1.9 사용자 피드백 — 여백까지 둥글면 티가 안 남) */
-function ContainImg({ fileRef, rounded }: { fileRef: string; rounded: boolean }) {
+function ContainImg({ fileRef, rounded, onActivate }: {
+  fileRef: string; rounded: boolean; onActivate?: () => void;
+}) {
   const url = useBlobUrl(fileRef);
+  const imgRef = useRef<HTMLImageElement>(null);
+  // 투명 픽셀 판독용 캔버스 — 이미지마다 한 번만 그린다
+  const cacheRef = useRef<{ url: string; c: HTMLCanvasElement } | null>(null);
   if (!url) return null;
+  /* 클릭이 실제 그림 위인지 (v2.0 사용자 요청 — 「투명 영역은 클릭 영역이 아니게」).
+     장식 이미지는 배경이 투명한 PNG가 많다 — 빈 데를 눌러도 링크로 가면 이상하다.
+     픽셀의 투명도를 읽어 거의 투명하면 클릭으로 치지 않는다. 외부 주소 이미지처럼
+     판독이 막히면(캔버스 보안) 이미지 사각형 기준으로만 제한한다. */
+  const hitTest = (e: React.MouseEvent): boolean => {
+    const img = imgRef.current;
+    if (!img || !img.naturalWidth) return true;
+    const r = img.getBoundingClientRect();
+    const x = Math.floor((e.clientX - r.left) / r.width * img.naturalWidth);
+    const y = Math.floor((e.clientY - r.top) / r.height * img.naturalHeight);
+    try {
+      if (!cacheRef.current || cacheRef.current.url !== url) {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        c.getContext('2d', { willReadFrequently: true })!.drawImage(img, 0, 0);
+        cacheRef.current = { url, c };
+      }
+      return cacheRef.current.c.getContext('2d')!.getImageData(x, y, 1, 1).data[3] > 8;
+    } catch { return true; }
+  };
   return (
     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="" draggable={false}
+      <img ref={imgRef} src={url} alt="" draggable={false}
+        onClick={e => { if (onActivate && hitTest(e)) onActivate(); }}
         style={{
           maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', display: 'block',
           borderRadius: rounded ? 'var(--radius)' : 0,
+          cursor: onActivate ? 'var(--cur-pointer,pointer)' : undefined,
         }} />
     </div>
   );
@@ -444,19 +506,31 @@ export function DecoWidget({ conf }: { conf: WidgetConf }) {
       else router.push(l);
     }
   };
+  // 직접 정한 크기 (v2.0 사용자 요청) — 비우면 지금까지처럼 자리(그리드 칸)를 따라간다
+  const wPx = conf.settings.wPx as number | undefined;
+  const hPx = conf.settings.hPx as number | undefined;
+  const canGo = !editOn && !!cur?.link;
   return (
     <div className="deco-wgt"
       style={{
-        position: 'relative', width: '100%', height: '100%', minHeight: 80, overflow: 'hidden',
-        aspectRatio: conf.h == null ? '1/1' : undefined, // 크기 동결 전 기본 정사각
+        position: 'relative', overflow: 'hidden',
+        width: wPx ? `${wPx}px` : '100%', maxWidth: '100%',
+        height: hPx ? `${hPx}px` : '100%', minHeight: hPx ? undefined : 80,
+        margin: wPx ? '0 auto' : undefined,
+        aspectRatio: conf.h == null && !hPx ? '1/1' : undefined, // 크기 동결 전 기본 정사각
         borderRadius: rounded ? 'var(--radius)' : 0,
-        cursor: !editOn && cur?.link ? 'var(--cur-pointer,pointer)' : undefined,
-      }}
-      onClick={onBody}>
+      }}>
+      {/* 클릭은 이미지 위에서만 (v2.0 사용자 요청) — 예전에는 위젯 칸 전체가 눌렸다.
+          꽉 채움은 이미지가 칸을 채우므로 그대로 칸 전체, 비율 유지는 그림 픽셀 기준(투명 제외) */}
       {cur
         ? (fit === 'contain'
-          ? <ContainImg key={cur.id} fileRef={cur.imgId} rounded={rounded} />
-          : <CroppedBlobImg key={cur.id} fileRef={cur.imgId} crop={cur.crop} ph="" />)
+          ? <ContainImg key={cur.id} fileRef={cur.imgId} rounded={rounded} onActivate={canGo ? onBody : undefined} />
+          : (
+            <div style={{ position: 'absolute', inset: 0, cursor: canGo ? 'var(--cur-pointer,pointer)' : undefined }}
+              onClick={canGo ? onBody : undefined}>
+              <CroppedBlobImg key={cur.id} fileRef={cur.imgId} crop={cur.crop} ph="" />
+            </div>
+          ))
         : (
           <div className="ph" style={{ position: 'absolute', inset: 0 }}>
             <span style={{ fontSize: 10 }}>{isAdmin ? 'DECO — 편집모드에서 우클릭 → 설정' : 'DECO'}</span>
@@ -483,8 +557,12 @@ export function DecoWidget({ conf }: { conf: WidgetConf }) {
 /* ---------- 스티커 메모 미니보드 (4.6) — 읽기 전용 축소 보드, 클릭 시 /memo ---------- */
 export function MemoBoardWidget() {
   const router = useRouter();
+  const { user, isAdmin } = useAuth();
   const [memos] = useLocalList<StickyMemo>('ohome.memo.v1', MEMO_SEED);
   const [settings] = useMemoSettings();
+  // 메뉴에서 비공개로 둔 메모장은 위젯에도 안 나온다 (v2.0)
+  const [menuSet] = useMenuSettings();
+  if (!canViewHref(menuSet, '/memo', { loggedIn: !!user, isAdmin })) return null;
   return (
     <div className="panel widget" style={{ display: 'flex', flexDirection: 'column' }}>
       <h4>STICKY</h4>
@@ -511,8 +589,10 @@ export function MemoBoardWidget() {
    마감이 없는 신청은 「다가오는 마감」이 아니므로 넣지 않는다. 지난 마감도 뺀다. */
 export function ApplyWidget({ conf }: { conf: WidgetConf }) {
   const router = useRouter();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { editOn, updateWidget } = useMainStore();
+  // 메뉴에서 비공개로 둔 신청자 리스트는 위젯에도 안 나온다 (v2.0)
+  const [menuSet] = useMenuSettings();
   const [settings] = useCommSettings();
   const [apps] = useLocalList<Applicant>('ohome.commapply.v1', APPLY_SEED);
   const [open, setOpen] = useState(false);
@@ -532,6 +612,9 @@ export function ApplyWidget({ conf }: { conf: WidgetConf }) {
     const n = Math.round(ms / 86400000);
     return n === 0 ? 'D-DAY' : `D-${n}`;
   };
+
+  // 훅을 모두 부른 뒤에 판정한다 — 중간에서 빠지면 렌더마다 훅 수가 달라진다
+  if (!canViewHref(menuSet, '/comm-apply', { loggedIn: !!user, isAdmin })) return null;
 
   return (
     /* 누르면 관리자든 아니든 신청자 페이지로 간다 (v2.0 사용자 요청).

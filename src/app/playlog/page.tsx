@@ -1,9 +1,10 @@
 'use client';
 // TRPG 플레이기록 (4.16) — 표 형식 · Date 정렬 · 검색 · 페이지네이션 ·
 // Url 열은 클립 픽토그램(새 탭) · 로그 연결 시 Playtime 클릭으로 로그 이동
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useSectionParam, filterSection, sectionSetter, secQuery } from '@/lib/sectionStore';
 import { useLocalList } from '@/lib/postStore';
 import { PlayRecord, PLAYLOG_SEED } from '@/lib/galleryStore';
 import { useMenuSettings } from '@/lib/menuStore';
@@ -24,10 +25,15 @@ function ClipIcon() {
   );
 }
 
-export default function PlaylogPage() {
+function PlaylogPageInner() {
   const router = useRouter();
   const { isAdmin } = useAuth();
-  const [records, setRecords, loaded] = useLocalList<PlayRecord>('ohome.playlog.v1', PLAYLOG_SEED);
+  const [recordsAll, setRecordsAll, loaded] = useLocalList<PlayRecord>('ohome.playlog.v1', PLAYLOG_SEED);
+  // 여러 개로 만든 섹션 (v2.0) — 주소의 ?s= 가 가리키는 것만 보여 준다
+  const sec = useSectionParam('playlog');
+  const records = filterSection(recordsAll, sec.id);
+  // 저장은 이 섹션 자리만 교체 — 걸러진 목록을 그대로 넘겨도 다른 섹션이 지워지지 않는다
+  const setRecords = sectionSetter(recordsAll, sec.id, setRecordsAll);
   const [q, setQ] = useState('');
   const [desc, setDesc] = useState(true);       // Date 정렬 방향
   const [page, setPage] = useState(1);
@@ -77,11 +83,11 @@ export default function PlaylogPage() {
   return (
     <section className="page">
       <div className="page-head">
-        <PageTitle>PLAY LOG</PageTitle>
+        <PageTitle>{sec.id === 'main' ? 'PLAY LOG' : sec.name}</PageTitle>
         <EditableDesc k="playlog-desc" def="다녀온 세션 기록 — 표 형식" />
         <div className="head-actions">
           <SearchBar placeholder="시나리오·라이터·동행 검색" onSearch={v => { setQ(v); setPage(1); }} />
-          {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/playlog/new')}>＋ ADD RECORD</button>}
+          {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/playlog/new' + secQuery('playlog', sec.id))}>＋ ADD RECORD</button>}
         </div>
       </div>
 
@@ -175,4 +181,9 @@ export default function PlaylogPage() {
         ]} />
     </section>
   );
+}
+
+/** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */
+export default function PlaylogPage() {
+  return <Suspense fallback={<section className="page" />}><PlaylogPageInner /></Suspense>;
 }

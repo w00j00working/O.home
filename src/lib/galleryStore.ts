@@ -7,6 +7,8 @@ import { getRawSetting, setSetting } from './settingStore';
 
 /* ---------- 로드뷰 (4.10) ---------- */
 export interface RoadItem {
+  /** 소속 섹션 (v2.0) — 여러 개로 만들었을 때. 없으면 기본 섹션 */
+  secId?: string;
   id: string;
   title: string;
   author: string;
@@ -26,6 +28,8 @@ export const ROAD_SEED: RoadItem[] = [];
 
 /* ---------- 그림백업 (4.11) ---------- */
 export interface BackupPost {
+  /** 소속 섹션 (v2.0) — 여러 개로 만들었을 때. 없으면 기본 섹션 */
+  secId?: string;
   id: string;
   title: string;
   type: 'log' | 'single' | 'vlist';    // 로그형(틈 없이 세로) / 단일형(좌우 넘김) / 단일 세로정렬(갭 있는 세로, v1.9)
@@ -40,6 +44,8 @@ export interface BackupPost {
   authorId: string;
   visibility: Visibility;
   fold: { type: FoldType; label?: string } | null;
+  /** 태그 (v2.0 사용자 요청) — 목록·카드에 나열되고 검색에 걸린다 */
+  tags?: string[];
 }
 
 export const BACKUP_SEED: BackupPost[] = [];
@@ -48,6 +54,8 @@ export const BACKUP_CATEGORIES = ['합작', '낙서', '커미션', '설정화'];
 
 /* ---------- TRPG 백업 (4.3) ---------- */
 export interface TrpgLog {
+  /** 소속 섹션 (v2.0) — 여러 개로 만들었을 때. 없으면 기본 섹션 */
+  secId?: string;
   id: string;
   no: number;                // 내부 순번 (정렬용 — 자동 부여)
   noText?: string;           // № 자리 표시 텍스트 (선택 — 비우면 자동 № 0XX)
@@ -93,6 +101,9 @@ export interface TrpgLogBody {
   originalFileId?: string;
   originalName?: string;
   visibility: Visibility;
+  /** 어느 로그 백업 소속인지 (v2.0) — 목록 문서와 따로 저장되므로 소속도 따로 들고 있어야
+   *  「메뉴가 비공개면 글도 비공개로」 판정이 본문 문서에도 걸린다. 없으면 기본 섹션. */
+  secId?: string;
 }
 
 /** 본문 문서에 적을 열람 권한 — 비밀번호가 걸려 있으면 목록 필터가 예전부터 그래 왔듯 공개로 둔다
@@ -196,6 +207,8 @@ export function useTrpgSettings(): [TrpgSettings, (patch: Partial<TrpgSettings>)
 }
 
 export interface DotoriItem {
+  /** 소속 섹션 (v2.0) — 여러 개로 만들었을 때. 없으면 기본 섹션 */
+  secId?: string;
   id: string;
   name: string;              // 시나리오 이름 (필수)
   writer: string;            // 라이터
@@ -214,6 +227,8 @@ export const DOTORI_SEED: DotoriItem[] = [];
 
 /* ---------- TRPG 플레이기록 (4.16) — 표 형식 ---------- */
 export interface PlayRecord {
+  /** 소속 섹션 (v2.0) — 여러 개로 만들었을 때. 없으면 기본 섹션 */
+  secId?: string;
   id: string;
   date?: string;             // Date (optional — 비우면 표 맨 아래)
   scenario: string;          // Scenario (필수)

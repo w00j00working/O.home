@@ -34,7 +34,7 @@ export default function RelNewPage() {
       <RelForm
         initial={null}
         myChars={chars.filter(c => c.own)}
-        existingIds={rels.map(r => r.id)}
+        existingIds={rels.flatMap(r => [r.id, ...(r.slug ? [r.slug] : [])])}
         onCancel={() => router.push('/rels')}
         onSave={v => {
           // 팔레트는 캐릭터 쪽을 상세에서 그대로 읽는다 — 여기서 복사해 두면 나중에 캐릭터 색을

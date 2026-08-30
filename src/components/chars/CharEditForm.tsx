@@ -3,6 +3,7 @@
 // 모달이 아니라 페이지라 잘못 클릭해도 닫히지 않음. 탭 내용은 별도 편집 화면으로 전환해 작성.
 // 아트는 여러 장 — 첫 장이 대표 풀 아트이자 리스트 썸네일(3:4 크롭) 원본 (6.1)
 import React, { useEffect, useState } from 'react';
+import { useAuth } from '@/lib/auth';
 import { Character, CharTab, ColorChip, Visibility, CharGrant } from '@/lib/charStore';
 import { GrantsEditor } from '@/components/chars/GrantsEditor';
 import { newId } from '@/lib/postStore';
@@ -39,11 +40,14 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
   existingIds?: string[];                  // 페이지 주소 중복 검사용 (v1.9 — 신규 등록)
 }) {
   const { fonts, familyOf } = useFonts();
+  const { isAdmin } = useAuth();
   const toast = useToast();
   const isNew = !initial;
 
   const [name, setName] = useState(initial?.name ?? '');
-  const [slug, setSlug] = useState('');   // 페이지 주소 /chars/{slug} (v1.9 — 신규 등록, 비우면 자동)
+  // 페이지 주소 /chars/{slug} — 신규는 비우면 자동(id). 수정에서도 바꿀 수 있다 (v2.0 사용자 요청):
+  // id는 그대로 두고 별명(slug)만 저장하므로 참조가 끊어지지 않고 옛 주소도 계속 열린다
+  const [slug, setSlug] = useState(initial?.slug ?? '');
   const [sub, setSub] = useState(initial?.sub ?? '');
   const [color, setColor] = useState(initial?.color ?? '#5d636d');
   const [themeMode, setThemeMode] = useState<'default' | 'custom'>(initial?.themeMode ?? 'default');
@@ -55,6 +59,8 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
     (initial?.specs ?? [{ label: '성별', value: '' }, { label: '키', value: '' }]).map(s => ({ ...s, id: newId() })));
   const [colors, setColors] = useState<ColorRow[]>((initial?.colors ?? []).map(c => ({ ...c, id: newId() })));
   const [colorTipMode, setColorTipMode] = useState<'hex' | 'both' | 'label'>(initial?.colorTipMode ?? 'hex');
+  // 색 점 테두리 (v2.0 사용자 요청) — 없음 / 1px(색 지정). 미지정이면 지금까지의 옅은 테두리
+  const [colorBd, setColorBd] = useState<string | undefined>(initial?.colorBd);
   const [basicHtml, setBasicHtml] = useState(initial?.basicHtml ?? '');
   const [tabs, setTabs] = useState<CharTab[]>(initial?.tabs ?? []);
   const [arts, setArts] = useState<ArtItem[]>(() => {
@@ -79,14 +85,16 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
 
   const save = async () => {
     if (!name.trim()) { toast('이름을 입력해 주세요'); return; }
-    // 페이지 주소 (v1.9) — 유효성·중복 검사
-    if (isNew && slug) {
+    // 페이지 주소 (v1.9 / 수정도 가능 v2.0) — 유효성·중복 검사
+    if (slug && slug !== (initial?.slug ?? '')) {
       if (!isValidSlug(slug)) { toast('주소는 영문 소문자·숫자·하이픈만 쓸 수 있습니다'); return; }
       if (existingIds?.includes(slug)) { toast('이미 사용 중인 주소입니다 — 다른 주소를 입력해 주세요'); return; }
     }
     const artIds = await Promise.all(arts.map(a => (a.file ? putBlob(a.file) : Promise.resolve(a.ref!))));
     onSave({
       id: initial?.id ?? (slug || newId()),
+      // 수정에서 정한 주소는 별명으로 (v2.0) — 신규는 주소가 곧 id라 따로 남기지 않는다
+      slug: !isNew ? (slug.trim() || undefined) : undefined,
       // 입력한 그대로 저장 — 예전에는 대문자로 바꿔 저장해서 소문자 이름을 쓸 수 없었다
       name: name.trim(),
       sub: sub.trim(),
@@ -94,6 +102,7 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
       themeMode,
       colors: colors.filter(x => x.hex).map(({ hex, label }) => ({ hex, label })),
       colorTipMode,
+      colorBd,
       specs: specs.filter(s => s.label.trim()).map(({ label, value }) => ({ label: label.trim(), value })),
       tabs,   // 제목이 비어도 유지 — 필터로 사라지던 버그 수정 (v1.9 사용자 지적)
       basicHtml,
@@ -207,6 +216,16 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
             <button className={colorTipMode === 'both' ? 'on' : ''} onClick={() => setColorTipMode('both')}>이름+hex</button>
             <button className={colorTipMode === 'label' ? 'on' : ''} onClick={() => setColorTipMode('label')}>이름만</button>
           </div>
+          {/* 색 점 테두리 (v2.0 사용자 요청) — 안 정하면 지금까지의 옅은 테두리 그대로 */}
+          <div className="mini-seg" data-tip="색 점 테두리">
+            <button className={colorBd === undefined ? 'on' : ''} onClick={() => setColorBd(undefined)}>기본</button>
+            <button className={colorBd === 'none' ? 'on' : ''} onClick={() => setColorBd('none')}>없음</button>
+            <button className={colorBd !== undefined && colorBd !== 'none' ? 'on' : ''}
+              onClick={() => setColorBd(c => (c && c !== 'none' ? c : '#1d2025'))}>1px</button>
+          </div>
+          {colorBd !== undefined && colorBd !== 'none' && (
+            <ColorField value={colorBd} onChange={setColorBd} />
+          )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 10px' }}>
           {colors.map(c => (
@@ -246,8 +265,15 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
             setView(id); // 바로 전용 편집 화면으로
           }}>＋ ADD TAB</button>
 
-        {/* 상대 캐릭터 회원 권한 — 역극 플레이 / 편집까지 (3차 회원-캐릭터 연결, v1.9) — AU 편집에선 base 소관 */}
-        {!auMode && initial?.own === false && (
+        {/* 회원 권한 — 역극 플레이 / 편집까지 (3차 회원-캐릭터 연결, v1.9) — AU 편집에선 base 소관.
+            **관리자만** (v2.0 사용자 확정) — 편집 권한을 받은 회원이 이 화면에 들어와도
+            권한 관리는 못 한다. 열어 두면 자기가 받은 권한으로 남에게 권한을 나눠 줄 수 있다.
+            저장 시에는 기존 grants가 그대로 보존된다(이 화면에서 건드리지 않으므로).
+            **own 여부와 무관하게** (v2.0 포크 제보) — 예전에는 상대 캐릭터(own=false)에만 떠서,
+            상대방 캐릭터까지 정식 캐릭터로 직접 등록해 쓰는 홈에서는 권한을 줄 방법이 없었다.
+            관리자 전용이 된 지금은 이 제한이 있을 이유가 없다 — 권한 판정(charGrant·역극 참여)은
+            원래부터 own을 보지 않는다. */}
+        {!auMode && isAdmin && (
           <>
             <label className="k-label" style={{ margin: '6px 0 0' }}>회원 권한 — 역극 플레이 · 캐릭터 편집</label>
             <GrantsEditor value={grants} onChange={setGrants} />
@@ -262,15 +288,17 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
           <div style={{ display: 'grid', gap: 9 }}>
             <KInput placeholder="이름" value={name} onChange={e => setName(e.target.value)}
               style={{ fontFamily: familyOf(fontId) }} />
-            {/* 페이지 주소 (v1.9) — /chars/{slug}, 비우면 자동 · 중복이면 경고 */}
-            {isNew && (
+            {/* 페이지 주소 (v1.9) — /chars/{slug}, 비우면 자동 · 중복이면 경고.
+                수정에서도 바꿀 수 있다 (v2.0 사용자 요청) — 비우면 원래 주소(id) 그대로.
+                AU 편집에서는 주소가 base 소관이라 숨긴다 */}
+            {!auMode && (
               <div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{ fontSize: 12, color: 'var(--faint)', whiteSpace: 'nowrap' }}>/chars/</span>
-                  <KInput placeholder="페이지 주소 (선택)" value={slug}
+                  <KInput placeholder={isNew ? '페이지 주소 (선택)' : `페이지 주소 (비우면 ${initial?.id})`} value={slug}
                     onChange={e => setSlug(slugify(e.target.value))} style={{ flex: 1 }} />
                 </div>
-                {slug && existingIds?.includes(slug) && (
+                {slug && slug !== (initial?.slug ?? '') && existingIds?.includes(slug) && (
                   <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--accent)' }}>이미 사용 중인 주소입니다</p>
                 )}
               </div>
@@ -294,23 +322,24 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
                   { value: 'private', label: '나만보기' },
                 ]} />
             )}
+            {/* 설명은 드롭다운 **위에** (v2.0 사용자 요청 — 자관 폼과 같은 배치) */}
+            <p className="hint" style={{ margin: '2px 0 0' }}>이름 폰트 — 리스트·상세 이름에 적용</p>
             <KSelect value={fontId} onChange={setFontId}
               options={fonts.map(f => ({
                 value: f.id,
                 label: <span style={{ fontFamily: f.family }}>{f.name}</span>,
               }))} />
-            <p className="hint" style={{ margin: 0 }}>이름 폰트 — 리스트·상세 이름에 적용</p>
             {/* 이름 길이가 제각각이라 자동으로 줄이면 어중간해진다 — 캐릭터마다 직접 정한다 (v2.0) */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <span className="k-label" style={{ margin: 0, flex: 1 }}>상세 이름 크기</span>
               <KStep value={nameSize} onChange={setNameSize} min={14} max={72} step={1} suffix="px" />
             </div>
+            <p className="hint" style={{ margin: '2px 0 0' }}>본문 폰트 — 프로필 정보·소개 텍스트에 적용</p>
             <KSelect value={bodyFontId} onChange={setBodyFontId}
               options={fonts.map(f => ({
                 value: f.id,
                 label: <span style={{ fontFamily: f.family }}>{f.name}</span>,
               }))} />
-            <p className="hint" style={{ margin: 0 }}>본문 폰트 — 프로필 정보·소개 텍스트에 적용</p>
           </div>
         </div>
         <div className="form-actions">

@@ -17,6 +17,9 @@ export interface RpRoom {
   id: string;
   title: string;
   relId?: string;                   // 기반 자관 (선택 — 자유 개설 가능)
+  /** 그 자관의 어느 AU로 노는지 (v2.0 사용자 요청) — 없으면 원래 설정.
+   *  방 안에서 캐릭터를 그 AU 프로필(이름·색·이미지)로 바꿔 보여 준다. */
+  auId?: string;
   memberIds: string[];              // 참여 회원 — 이 목록에 없으면 방의 존재 자체가 보이지 않음 (확정)
   status: 'ongoing' | 'done';       // 진행중 / 완결
   isPublic: boolean;                // 완결 후 공개 전환 (자관 역극 리스트로 열람)

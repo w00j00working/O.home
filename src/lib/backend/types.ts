@@ -54,12 +54,17 @@ export interface Backend {
   updateProfile(patch: { nickname?: string; avatarUrl?: string | null; avatarColor?: string | null }): Promise<{ ok: boolean; error?: string }>;
   /** 첫 계정을 이 홈의 관리자로 등록 (관리자가 아직 없을 때만) */
   claimOwner(): Promise<{ ok: boolean; error?: string }>;
-  /** 가입 회원 목록 — 역극 참여자 선택·회원 관리 화면용 */
-  listMembers(): Promise<{ id: string; nickname: string; role: 'admin' | 'member'; email?: string }[]>;
+  /** 가입 회원 목록 — 역극 참여자 선택·회원 관리 화면용.
+   *  avatarUrl도 내준다 (v2.0 사용자 제보) — 이미지 정리가 콘텐츠·설정만 훑던 시절, 프로필 사진은
+   *  어디에도 참조가 안 잡혀 「아무도 안 쓰는 파일」로 지워졌다. */
+  listMembers(): Promise<{ id: string; nickname: string; role: 'admin' | 'member'; email?: string; avatarUrl?: string }[]>;
 
   /* ---- 목록(콘텐츠) ---- */
   fetchList<T extends ListItem>(coll: string): Promise<T[]>;
   syncList<T extends ListItem>(coll: string, prev: T[], next: T[], uid: string | null): Promise<void>;
+  /** 이미 저장된 행의 공개범위만 다시 계산해 덮어쓴다 (v2.0) — 메뉴를 비공개로 바꾼 뒤
+   *  「글에도 적용」을 누르면 돈다. 내용(data)·순서(sort)는 건드리지 않는다. */
+  refreshVis<T extends ListItem>(coll: string, items: T[], uid: string | null): Promise<number>;
   subscribe(coll: string, onChange: () => void): () => void;
 
   /* ---- 설정(key/value) ---- */
@@ -114,23 +119,34 @@ export const COLLECTION_OF: Record<string, string> = {
   // 역극 발화 — 방 안이 아니라 자기 문서로 (v2.0). 같은 이유로, 방 안에 두면 말할 때마다
   // 방을 UPDATE 해야 해서 남이 만든 방에서 참여자가 발화할 수 없었다
   'ohome.rpmsgs.v1': 'rp_messages',
+  // 알림 — 기기 보관이던 것을 서버로 (v2.0 포크 제보 「알림이 안 와요」).
+  // 행 주인(authorId)을 받는 사람으로 적어, 받는 사람 계정이 어느 기기에서나 받아 간다
+  'ohome.notif.v1': 'notifications',
 };
 
 export const CONTENT_COLLECTIONS = Object.values(COLLECTION_OF);
 
-/** 항목 배열 비교 — 두 백엔드가 공유하는 diff (바뀐 것만 저장) */
+/** 항목 배열 비교 — 두 백엔드가 공유하는 diff (바뀐 것만 저장).
+ *
+ *  **내용이 그대로고 자리만 바뀐 항목은 moves로 분리한다** (v2.0 포크 제보 — 큰 로그 본문 저장 실패).
+ *  새 항목을 목록 맨 앞에 끼우면 기존 항목 전부의 자리가 밀리는데, 이걸 전부 updates로 취급하면
+ *  **본문까지 통째로 다시 전송**된다. TRPG 로그 본문(문서당 최대 700KB)이 쌓인 홈에서는 그 합이
+ *  Firestore 쓰기 한 번의 최대 크기(10MiB)를 넘어 **새 로그의 본문 저장만 조용히 실패**했다 —
+ *  티켓은 생기는데 본문은 「비어 있습니다」가 되는 원인. moves는 sort 값만 고쳐 저장하면 된다. */
 export function diffList<T extends ListItem>(prev: T[], next: T[]) {
   const prevMap = new Map(prev.map((it, i) => [it.id, { it, i }]));
   const nextIds = new Set(next.map(it => it.id));
   const inserts: { item: T; sort: number }[] = [];
   const updates: { item: T; sort: number }[] = [];
+  const moves: { id: string; sort: number }[] = [];
   next.forEach((it, i) => {
     const before = prevMap.get(it.id);
     if (!before) inserts.push({ item: it, sort: i });
-    else if (before.i !== i || JSON.stringify(before.it) !== JSON.stringify(it)) updates.push({ item: it, sort: i });
+    else if (JSON.stringify(before.it) !== JSON.stringify(it)) updates.push({ item: it, sort: i });
+    else if (before.i !== i) moves.push({ id: it.id, sort: i });
   });
   const deletes = prev.filter(it => !nextIds.has(it.id)).map(it => it.id);
-  return { inserts, updates, deletes };
+  return { inserts, updates, moves, deletes };
 }
 
 /** 항목에서 권한 판단에 쓰는 값 뽑기.
@@ -140,13 +156,18 @@ export function diffList<T extends ListItem>(prev: T[], next: T[]) {
  *  목록에는 표시돼야해"). Firestore·Supabase RLS 둘 다 list/get을 같은 규칙으로 묶어 판단하므로,
  *  이 필드가 있는 문서에는 민감한 내용(본문 등)을 절대 함께 두면 안 된다 — 질의로 노출되면
  *  단일 조회 권한도 함께 열리기 때문. (그래서 TRPG 로그는 본문을 별도 문서로 분리해 저장한다.) */
-export function metaOf(item: ListItem, uid: string | null) {
+export function metaOf(item: ListItem, uid: string | null, floor = 'public') {
   const rawAuthor = typeof item.authorId === 'string' ? item.authorId : '';
   const authorId = rawAuthor || uid || null;
   const hasListHidden = typeof item.listHidden === 'boolean';
-  const visibility = hasListHidden
+  const own = hasListHidden
     ? (item.listHidden ? 'private' : 'public')
     : (typeof item.visibility === 'string' ? item.visibility : 'public');
+  /* 메뉴를 비공개로 둔 곳의 글은 그 기준까지 좁혀 저장한다 (v2.0 사용자 요청 — visFloor 참조).
+     **좁히기만 한다** — 글이 이미 더 좁으면 그대로다. 게시판 글처럼 visibility 칸이 아예 없는
+     종류도 여기서 정해지므로, 서버가 내주지 않는 것은 화면과 무관하게 보장된다. */
+  const rank: Record<string, number> = { public: 0, member: 1, private: 2 };
+  const visibility = (rank[floor] ?? 0) > (rank[own] ?? 0) ? floor : own;
   return { authorId, visibility, editorIds: editorIdsOf(item) };
 }
 

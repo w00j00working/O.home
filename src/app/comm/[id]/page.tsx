@@ -3,6 +3,8 @@
 // 우측 정렬 가격/마감 기준/슬롯/문의 링크 + 격리 렌더 설명 + 커미션별 테마컬러
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useHrefBlock } from '@/components/shell/MenuGuard';
+import { sectionHref, MAIN_SEC } from '@/lib/sectionStore';
 import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/lib/ThemeProvider';
 import { useLocalList } from '@/lib/postStore';
@@ -71,6 +73,10 @@ export default function CommDetailPage() {
   const [cropFor, setCropFor] = useState<string | null>(null);   // 썸네일 위치 잡는 중인 이미지
 
   const c = items.find(x => x.id === id);
+  /* 이 글이 속한 곳이 비공개면 주소로 들어와도 열리지 않게 (v2.0 사용자 요청).
+     글 주소에는 섹션이 없어 MenuGuard가 못 막는다 — 글을 읽어 소속을 알아낸 여기서 판정한다.
+     **다른 early return보다 먼저 불러야 한다**(훅이므로 렌더마다 개수가 같아야 한다) */
+  const blocked = useHrefBlock(c && sectionHref('comm', c.secId ?? MAIN_SEC));
 
   // 커미션별 페이지 테마컬러 (4.18) — 접속 시 전체 팔레트 전환, 벗어나면 원복
   const { setPageTheme } = useTheme();
@@ -83,6 +89,8 @@ export default function CommDetailPage() {
 
   const descHtml = useMemo(() => (loaded && c ? sanitizeHtml(c.descHtml) : ''), [loaded, c]);
 
+  // 막힌 곳이면 여기서 되돌아간다 — 훅을 모두 부른 뒤여야 렌더마다 개수가 같다
+  if (blocked) return blocked;
   if (!loaded || !setLoaded) return <section className="page" />;
   if (!c) {
     return (

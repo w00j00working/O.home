@@ -125,9 +125,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const vars = draft.perMode[draft.mode];
     const root = document.documentElement;
     if (vars.bgType === 'image' && vars.bgImageId && !pageColor && !pageBg) {
+      const ref = vars.bgImageId;
+      /* **주소면 그대로 쓴다** (v2.0 사용자 발견 — 「배경에 사진을 올렸는데 안 바뀐다」).
+         서버 모드에서는 올린 이미지가 저장소의 공개 주소로 저장되는데, 여기서만 그것을
+         `getBlob`으로 **다시 내려받아** blob 주소로 바꾸고 있었다. 그 fetch는 저장소의
+         CORS 설정에 걸리면 조용히 실패한다 — 화면 어디에도 오류가 안 뜨고 배경만 안 바뀐다.
+         다른 이미지들은 전부 주소를 그대로 쓰므로(useBlobUrl) 잘 나왔다. 여기만 예외였다. */
+      if (/^(https?:|data:|blob:)/.test(ref)) {
+        root.style.setProperty('--bg-image', `url("${ref}")`);
+        return () => { root.style.removeProperty('--bg-image'); };
+      }
+      // 브라우저 저장(IndexedDB) 파일 id — 그때만 풀어서 blob 주소를 만든다
       let cancelled = false;
       let url: string | null = null;
-      getBlob(vars.bgImageId).then(b => {
+      getBlob(ref).then(b => {
         if (cancelled || !b) return;
         url = URL.createObjectURL(b);
         root.style.setProperty('--bg-image', `url("${url}")`);

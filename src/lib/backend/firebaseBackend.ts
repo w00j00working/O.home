@@ -9,6 +9,7 @@
 import {
   Backend, BackendCheck, BackendConfig, BackendUser, ListItem, diffList, metaOf,
 } from './types';
+import { visFloorOf } from '../visFloor';
 
 type FirebaseCfg = Extract<BackendConfig, { kind: 'firebase' }>;
 
@@ -254,11 +255,13 @@ export async function createFirebaseBackend(cfg: FirebaseCfg): Promise<Backend> 
       const admins = new Set([own?.uid, ...(own?.admins ?? [])].filter(Boolean) as string[]);
       const snap = await getDocs(collection(db, 'profiles'));
       return snap.docs.map(d => {
-        const v = d.data() as { nickname?: string };
+        // avatarUrl도 함께 — 이미지 정리가 프로필 사진을 「안 쓰는 파일」로 지우지 않게 (v2.0 사용자 제보)
+        const v = d.data() as { nickname?: string; avatarUrl?: string };
         return {
           id: d.id,
           nickname: v.nickname ?? d.id,
           role: (admins.has(d.id) ? 'admin' : 'member') as 'admin' | 'member',
+          avatarUrl: v.avatarUrl,
         };
       });
     },
@@ -281,20 +284,36 @@ export async function createFirebaseBackend(cfg: FirebaseCfg): Promise<Backend> 
     },
 
     async syncList<T extends ListItem>(coll: string, prev: T[], next: T[], uid: string | null) {
-      const { inserts, updates, deletes } = diffList(prev, next);
+      const { inserts, updates, moves, deletes } = diffList(prev, next);
       const ops = [...inserts, ...updates];
-      // Firestore 배치는 500개 제한 — 넉넉히 400개씩 끊는다
-      const chunk = <X,>(arr: X[], n: number) =>
-        Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
-
-      for (const part of chunk(ops, 400)) {
+      // Firestore 배치는 500개 제한에 **요청 크기 10MiB 제한**도 있다 (v2.0 포크 제보 — 큰 로그
+      // 본문 저장 실패). 개수(400)만 보고 끊으면 700KB짜리 본문 문서 십수 개에 10MiB를 넘어
+      // 배치가 통째로 거부된다 — 대략 크기를 재서 8MB쯤에서 미리 끊는다.
+      const parts: { item: T; sort: number }[][] = [];
+      let cur: { item: T; sort: number }[] = [];
+      let bytes = 0;
+      for (const op of ops) {
+        const size = JSON.stringify(op.item).length + 200;
+        if (cur.length && (cur.length >= 400 || bytes + size > 8_000_000)) { parts.push(cur); cur = []; bytes = 0; }
+        cur.push(op); bytes += size;
+      }
+      if (cur.length) parts.push(cur);
+      for (const part of parts) {
         const batch = writeBatch(db);
         part.forEach(({ item, sort }) => {
-          const { authorId, visibility, editorIds } = metaOf(item, uid);
+          const { authorId, visibility, editorIds } = metaOf(item, uid, visFloorOf(coll, item));
           batch.set(doc(db, coll, item.id), {
             data: item, authorId, visibility, editorIds, sort, updatedAt: Date.now(),
           });
         });
+        await batch.commit();
+      }
+      const chunk = <X,>(arr: X[], n: number) =>
+        Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
+      // 자리만 바뀐 항목 — sort만 고친다 (본문까지 다시 보내지 않게, 위 diffList 주석 참조)
+      for (const part of chunk(moves, 400)) {
+        const batch = writeBatch(db);
+        part.forEach(({ id, sort }) => batch.update(doc(db, coll, id), { sort, updatedAt: Date.now() }));
         await batch.commit();
       }
       for (const part of chunk(deletes, 400)) {
@@ -302,6 +321,24 @@ export async function createFirebaseBackend(cfg: FirebaseCfg): Promise<Backend> 
         part.forEach(id => batch.delete(doc(db, coll, id)));
         await batch.commit();
       }
+    },
+
+    /* 공개범위·편집 권한 목록만 다시 계산해 덮어쓰기 (v2.0) — data·sort는 손대지 않는다.
+       editorIds도 함께 쓴다 (포크 제보 — 업데이트 전에 준 편집 권한이 문서에 평평한 목록으로
+       없어서, 최신 규칙을 넣어도 그 회원의 저장이 계속 거부됐다) */
+    async refreshVis<T extends ListItem>(coll: string, items: T[], uid: string | null): Promise<number> {
+      let n = 0;
+      for (let i = 0; i < items.length; i += 400) {
+        const part = items.slice(i, i + 400);
+        const batch = writeBatch(db);
+        part.forEach(it => {
+          const { visibility, editorIds } = metaOf(it, uid, visFloorOf(coll, it));
+          batch.update(doc(db, coll, it.id), { visibility, editorIds, updatedAt: Date.now() });
+        });
+        await batch.commit();
+        n += part.length;
+      }
+      return n;
     },
 
     subscribe(coll, onChange) {

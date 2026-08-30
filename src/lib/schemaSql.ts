@@ -86,7 +86,8 @@ declare content_tables text[] := array[
   'moods',        -- 무드 목록
   'comments',     -- 댓글 (v2.0 — 글 안이 아니라 자기 행으로. 글을 수정하지 않고 댓글을 달 수 있게)
   'qa_answers',   -- 자관 문답 답변 (v2.0 — 같은 이유로 자관 안이 아니라 자기 행으로)
-  'rp_messages'   -- 역극 발화 (v2.0 — 같은 이유로 방 안이 아니라 자기 행으로)
+  'rp_messages',  -- 역극 발화 (v2.0 — 같은 이유로 방 안이 아니라 자기 행으로)
+  'notifications' -- 알림 (v2.0 — 기기 보관이던 것을 서버로: 받은 사람 계정으로 어느 기기에서나)
 ];
 begin
   foreach t in array content_tables loop
@@ -148,6 +149,11 @@ create policy "insert" on public.guestbook for insert with check (true);
 drop policy if exists "insert" on public.comments;
 create policy "insert" on public.comments for insert with check (true);
 
+-- 알림도 비로그인 방문자가 만들 수 있다 (v2.0) — 손님 댓글·방명록이 관리자에게 알림을 남겨야 하므로.
+-- 행의 주인(author_id)은 받는 사람이라, 읽기·수정·삭제는 받는 사람과 관리자만 (공통 정책 그대로).
+drop policy if exists "insert" on public.notifications;
+create policy "insert" on public.notifications for insert with check (true);
+
 -- ── 7. 사이트 설정 권한 (읽기 공개 · 쓰기 관리자) ────────────
 alter table public.profiles enable row level security;
 alter table public.invite_codes enable row level security;
@@ -196,13 +202,20 @@ do $$
 declare t text;
 begin
   -- 발화·답변·댓글이 각자 행으로 분리됐으므로(v2.0) 실시간도 그 테이블을 봐야 한다
-  foreach t in array array['rp_rooms', 'rp_messages', 'relations', 'qa_answers', 'posts', 'comments', 'guestbook'] loop
+  foreach t in array array['rp_rooms', 'rp_messages', 'relations', 'qa_answers', 'posts', 'comments', 'guestbook', 'notifications'] loop
     begin
       execute format('alter publication supabase_realtime add table public.%I', t);
     exception when others then null;  -- 이미 추가돼 있으면 무시
     end;
   end loop;
 end $$;
+
+-- ── 10. 스키마 캐시 갱신 (중요) ──────────────────────────────
+-- PostgREST(= REST API)는 테이블·컬럼 목록을 캐시해 둔다. SQL로 컬럼을 새로 추가해도
+-- 캐시가 갱신되기 전에는 API가 그 컬럼을 모른다 —
+--   Could not find the 'editor_ids' column of 'posts' in the schema cache (PGRST204)
+-- 실제로 업데이트 후 「글을 저장하지 못했습니다」로 나타났다. 마지막에 캐시를 새로 읽게 한다.
+notify pgrst, 'reload schema';
 
 -- ── 완료 ─────────────────────────────────────────────────────
 -- 이 스크립트를 실행한 뒤, 홈의 설치 화면에서 [연결 확인]을 누르면 검증됩니다.

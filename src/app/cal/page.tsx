@@ -1,7 +1,7 @@
 'use client';
 // 스케줄러 (4.12) — 월간 캘린더(정사각 블록) + 우측 D-day/투두(메인 위젯 데이터 공유) + 카테고리
 // 일정: 제목·기간·카테고리·색·메모·공개범위·매년 반복 · 일정 → D-day 승격 · 등록 권한 옵션
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useMainStore } from '@/lib/mainStore';
 import { useSched, SchedEvent, eventColor, eventOnDate } from '@/lib/schedStore';
@@ -13,17 +13,21 @@ import { DragList } from '@/components/ui/DragList';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { useToast } from '@/components/ui/Toast';
 import { useMenuSettings } from '@/lib/menuStore';
+import { useSectionParam } from '@/lib/sectionStore';
 
 const MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
 const fmt = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-export default function CalPage() {
+function CalInner() {
   const { user, isAdmin } = useAuth();
   const toast = useToast();
+  // 여러 개로 만든 스케줄러 (v2.0 사용자 요청) — 주소의 ?s= 가 가리키는 것만.
+  // 카테고리도 그 스케줄러 것을 쓴다(정한 적 없으면 기본 스케줄러 것).
+  const sec = useSectionParam('sched');
   const {
     st, loaded, addEvent, updateEvent, removeEvent,
     patchCat, addCat, removeCat, setCats, setAllowMember, reorderOn,
-  } = useSched();
+  } = useSched(sec.id);
   const { state: mainState, updateWidget } = useMainStore();
   const del = useConfirmDelete();
   const now = new Date();
@@ -110,7 +114,7 @@ export default function CalPage() {
   return (
     <section className="page">
       <div className="page-head">
-        <PageTitle>SCHEDULER</PageTitle>
+        <PageTitle>{sec.id === 'main' ? 'SCHEDULER' : sec.name}</PageTitle>
         <EditableDesc k="cal-desc" def="월간 캘린더 + 투두 + D-day" />
       </div>
 
@@ -296,4 +300,9 @@ export default function CalPage() {
       {del.element}
     </section>
   );
+}
+
+export default function CalPage() {
+  // useSearchParams는 Suspense 경계 필요 (Next App Router)
+  return <Suspense fallback={<section className="page" />}><CalInner /></Suspense>;
 }

@@ -1,8 +1,9 @@
 'use client';
 // 커미션 리스트 (4.18) — 3열 갤러리 · 갤러리 단위 썸네일 비율 · 상태 뱃지 · 전체 슬롯 표시
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useSectionParam, filterSection, sectionSetter, secQuery } from '@/lib/sectionStore';
 import { useLocalList } from '@/lib/postStore';
 import {
   CommItem, COMM_SEED, useCommSettings, badgeStyle, fmtPrice, slotView, SLOT_CHARS, slotCount, slotTip,
@@ -14,11 +15,16 @@ import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { useMainStore } from '@/lib/mainStore';
 import { useCardSort, mergeOrder } from '@/lib/cardSort';
 
-export default function CommListPage() {
+function CommListPageInner() {
   const router = useRouter();
   const { isAdmin } = useAuth();
   const { editOn } = useMainStore();
-  const [items, setItems, loaded] = useLocalList<CommItem>('ohome.comm.v1', COMM_SEED);
+  const [itemsAll, setItemsAll, loaded] = useLocalList<CommItem>('ohome.comm.v1', COMM_SEED);
+  // 여러 개로 만든 섹션 (v2.0) — 주소의 ?s= 가 가리키는 것만 보여 준다
+  const sec = useSectionParam('comm');
+  const items = filterSection(itemsAll, sec.id);
+  // 저장은 이 섹션 자리만 교체 — 걸러진 목록을 그대로 넘겨도 다른 섹션이 지워지지 않는다
+  const setItems = sectionSetter(itemsAll, sec.id, setItemsAll);
   const [settings, patchSettings, setLoaded] = useCommSettings();
   const [q, setQ] = useState('');
   const [slotOpen, setSlotOpen] = useState(false);   // 관리자 — SLOT 클릭 시 바로 관리 모달 (v1.9)
@@ -40,7 +46,7 @@ export default function CommListPage() {
   return (
     <section className="page">
       <div className="page-head head-stack">
-        <PageTitle>COMMISSION</PageTitle>
+        <PageTitle>{sec.id === 'main' ? 'COMMISSION' : sec.name}</PageTitle>
         <EditableDesc k="comm-desc" def="그림 커미션 안내 · 모집" />
         {/* 우측 스택: 슬롯(위) + 검색·등록(아래) — 제목 옆 배치라 리스트와 멀어지지 않음 (사용자 확정) */}
         <div className="head-actions stack">
@@ -52,7 +58,7 @@ export default function CommListPage() {
           </Tip>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <SearchBar placeholder="커미션 검색" onSearch={setQ} />
-            {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/comm/new')}>＋ ADD COMMISSION</button>}
+            {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/comm/new' + secQuery('comm', sec.id))}>＋ ADD COMMISSION</button>}
           </div>
         </div>
       </div>
@@ -118,4 +124,9 @@ export default function CommListPage() {
       </Modal>
     </section>
   );
+}
+
+/** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */
+export default function CommListPage() {
+  return <Suspense fallback={<section className="page" />}><CommListPageInner /></Suspense>;
 }

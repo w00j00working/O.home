@@ -30,6 +30,9 @@ interface AuthCtx {
   updateProfile: (patch: { nickname?: string; avatarUrl?: string | null; avatarColor?: string | null; currentPassword?: string; newPassword?: string }) => Promise<Result>;
   /** 서버(DB) 연결 없이 브라우저 계정으로 도는 중인지 — 개발·오프라인 */
   mock: boolean;
+  /** 누가 보고 있는지 확인이 끝났는지 (v2.0) — 처음 한 박자는 늘 「비로그인」으로 보인다.
+   *  그 사이에 권한을 판정하면 관리자에게도 「비공개」 화면이 번쩍인다. */
+  ready: boolean;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -97,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const server = isServerMode();
   const be = backend();
   const [user, setUser] = useState<User | null>(null);
+  const [ready, setReady] = useState(false);   // 확인이 끝났는지 (v2.0)
 
   useEffect(() => {
     if (!server || !be) {
@@ -104,11 +108,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const raw = localStorage.getItem(MOCK_KEY);
         if (raw) setUser(JSON.parse(raw));
       } catch { /* 무시 */ }
+      setReady(true);
       return;
     }
     let alive = true;
-    void be.currentUser().then(u => { if (alive) setUser(u as User | null); });
-    const off = be.onAuthChange(u => { if (alive) setUser(u as User | null); });
+    void be.currentUser().then(u => { if (alive) { setUser(u as User | null); setReady(true); } });
+    const off = be.onAuthChange(u => { if (alive) { setUser(u as User | null); setReady(true); } });
     return () => { alive = false; off(); };
   }, [server, be]);
 
@@ -217,7 +222,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      user, isAdmin: user?.role === 'admin',
+      user, isAdmin: user?.role === 'admin', ready,
       login, signup, findId, resetPassword, logout, updateProfile, mock: !server,
     }}>
       {children}

@@ -2,6 +2,7 @@
 // 게시판 설정 (5.2 게시판 관리) — 말머리(카테고리) 목록 관리 + 뱃지(공지/비밀/접힘·말머리별) 색
 import { useCallback, useEffect, useState } from 'react';
 import { newId } from './postStore';
+import { MAIN_SEC } from './sectionStore';
 
 export interface BoardBadge { id: string; label: string; bg: string; border: string; fg: string }
 
@@ -32,12 +33,23 @@ export const DEFAULT_GALLERY_CATS: BoardBadge[] = ['합작', '낙서', '커미�
 
 export interface BoardSettings {
   system: BoardBadge[]; cats: BoardBadge[]; gallery: BoardBadge[]; galleryCats: BoardBadge[];
+  /** 갤러리마다 따로 쓰는 말머리 (v2.0 사용자 요청) — 정한 적 없으면 기본 갤러리 것을 그대로.
+   *  새로 만들자마자 말머리가 비면 글부터 못 쓴다(감상타래·스케줄러와 같은 규칙). */
+  secGalleryCats?: Record<string, BoardBadge[]>;
 }
 const DEFAULTS: BoardSettings = {
   system: DEFAULT_BOARD_SYSTEM, cats: DEFAULT_BOARD_CATS,
   gallery: DEFAULT_GALLERY_BADGES, galleryCats: DEFAULT_GALLERY_CATS,
 };
 const KEY = 'ohome.boardset.v1';
+
+/** 그 갤러리에서 쓸 말머리 (v2.0) — 따로 정한 적이 없으면 기본 갤러리 것 */
+export const galleryCatsOf = (s: BoardSettings, secId: string): BoardBadge[] =>
+  (secId === MAIN_SEC ? s.galleryCats : s.secGalleryCats?.[secId] ?? s.galleryCats);
+
+/** 그 갤러리의 말머리를 담은 patch — 기본 갤러리면 예전 자리에 그대로 저장한다 */
+const galleryCatsPatch = (s: BoardSettings, secId: string, cats: BoardBadge[]): Partial<BoardSettings> =>
+  (secId === MAIN_SEC ? { galleryCats: cats } : { secGalleryCats: { ...s.secGalleryCats, [secId]: cats } });
 
 export function useBoardSettings() {
   const [st, setSt] = useState<BoardSettings>(DEFAULTS);
@@ -48,6 +60,11 @@ export function useBoardSettings() {
       if (raw) {
         const p = JSON.parse(raw) as Partial<BoardSettings>;
         setSt({
+          /* **저장된 값을 먼저 펼친다** — 예전에는 아는 칸 넷만 골라 새 객체를 만들어서,
+             나중에 늘어난 칸(갤러리별 말머리 `secGalleryCats`)이 읽을 때마다 조용히 사라졌다.
+             저장은 되는데 새로고침하면 없어지는 형태라 원인을 찾기 어렵다 (v2.0) */
+          ...DEFAULTS,
+          ...p,
           system: DEFAULT_BOARD_SYSTEM.map(d => p.system?.find(s => s.id === d.id) ?? d),
           cats: p.cats ?? DEFAULT_BOARD_CATS,
           gallery: DEFAULT_GALLERY_BADGES.map(d => p.gallery?.find(g => g.id === d.id) ?? d),
@@ -75,14 +92,19 @@ export function useBoardSettings() {
   const setCats = useCallback((cats: BoardBadge[]) => apply(s => ({ ...s, cats })), [apply]);
   const patchGallery = useCallback((id: string, p: Partial<BoardBadge>) =>
     apply(s => ({ ...s, gallery: s.gallery.map(b => (b.id === id ? { ...b, ...p } : b)) })), [apply]);
-  // 갤러리 말머리 — 게시판 말머리와 같은 방식으로 추가·수정·삭제·정렬 (v2.0)
-  const patchGalleryCat = useCallback((id: string, p: Partial<BoardBadge>) =>
-    apply(s => ({ ...s, galleryCats: s.galleryCats.map(b => (b.id === id ? { ...b, ...p } : b)) })), [apply]);
-  const addGalleryCat = useCallback(() =>
-    apply(s => ({ ...s, galleryCats: [...s.galleryCats, { id: newId(), label: '새 말머리', bg: '#eef0f2', border: '#d7dae0', fg: '#5d636d' }] })), [apply]);
-  const removeGalleryCat = useCallback((id: string) =>
-    apply(s => ({ ...s, galleryCats: s.galleryCats.filter(b => b.id !== id) })), [apply]);
-  const setGalleryCats = useCallback((galleryCats: BoardBadge[]) => apply(s => ({ ...s, galleryCats })), [apply]);
+  /* 갤러리 말머리 — 게시판 말머리와 같은 방식으로 추가·수정·삭제·정렬 (v2.0).
+     **갤러리마다 따로** 가질 수 있다 (v2.0 사용자 요청) — 첫 인자가 어느 갤러리인지다.
+     보고 있는 갤러리 것만 건드리므로 다른 갤러리 말머리가 지워지지 않는다. */
+  const mutGalleryCats = useCallback((secId: string, fn: (cats: BoardBadge[]) => BoardBadge[]) =>
+    apply(s => ({ ...s, ...galleryCatsPatch(s, secId, fn(galleryCatsOf(s, secId))) })), [apply]);
+  const patchGalleryCat = useCallback((secId: string, id: string, p: Partial<BoardBadge>) =>
+    mutGalleryCats(secId, cs => cs.map(b => (b.id === id ? { ...b, ...p } : b))), [mutGalleryCats]);
+  const addGalleryCat = useCallback((secId: string) =>
+    mutGalleryCats(secId, cs => [...cs, { id: newId(), label: '새 말머리', bg: '#eef0f2', border: '#d7dae0', fg: '#5d636d' }]), [mutGalleryCats]);
+  const removeGalleryCat = useCallback((secId: string, id: string) =>
+    mutGalleryCats(secId, cs => cs.filter(b => b.id !== id)), [mutGalleryCats]);
+  const setGalleryCats = useCallback((secId: string, cats: BoardBadge[]) =>
+    mutGalleryCats(secId, () => cats), [mutGalleryCats]);
   return {
     st, loaded, patchSystem, patchCat, addCat, removeCat, setCats, patchGallery,
     patchGalleryCat, addGalleryCat, removeGalleryCat, setGalleryCats,

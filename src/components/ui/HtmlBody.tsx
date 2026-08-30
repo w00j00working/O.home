@@ -8,8 +8,9 @@
  *
  * 라이트박스는 파일 id도 주소도 받으므로, 저장소에 올린 이미지(https)든 본문에 심긴 것(data:)이든 그대로 열린다.
  */
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Lightbox } from '@/components/ui/Lightbox';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 export function HtmlBody({ html, className, style }: {
   html: string;
@@ -18,6 +19,10 @@ export function HtmlBody({ html, className, style }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [lb, setLb] = useState<{ srcs: string[]; i: number } | null>(null);
+  /* **여기서 한 번 더 걸러 낸다** (v2.0) — 예전에는 받은 HTML을 그대로 심어서,
+     부르는 쪽이 정화를 잊으면 그대로 새어 들어갔다(인트로 페이지에서 실제로 그랬다).
+     이미 걸러 온 것을 다시 걸러도 결과는 같으므로, 안전은 여기서 보장한다. */
+  const safe = useMemo(() => sanitizeHtml(html), [html]);
 
   const onClick = (e: React.MouseEvent) => {
     const img = (e.target as HTMLElement).closest('img');
@@ -34,7 +39,7 @@ export function HtmlBody({ html, className, style }: {
   return (
     <>
       <div ref={ref} className={`${className ?? ''} html-body`} style={style}
-        onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />
+        onClick={onClick} dangerouslySetInnerHTML={{ __html: safe }} />
       {lb && <Lightbox srcs={lb.srcs} index={lb.i} onClose={() => setLb(null)} />}
     </>
   );

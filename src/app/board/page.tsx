@@ -57,6 +57,7 @@ function BoardInner() {
       list = list.filter(p =>
         p.title.toLowerCase().includes(k) ||
         p.author.toLowerCase().includes(k) ||
+        (p.tags ?? []).some(t => t.toLowerCase().includes(k)) ||   // 태그 검색 (v2.0 사용자 요청)
         (!p.secret && p.body.toLowerCase().includes(k)));
     }
     // 공지 상단 고정 + 최신순
@@ -66,7 +67,9 @@ function BoardInner() {
 
   const totalPages = Math.max(1, Math.ceil(visible.length / PER_PAGE));
   const pageList = visible.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const canRead = (p: Post) => !p.secret || isAdmin || p.authorId === user?.id;
+  /* 비밀글 열람 (v2.0 발견) — authorId 없는 비밀글은 비로그인 방문자에게도 열렸다.
+     둘 다 undefined라 `undefined === undefined`가 참이었기 때문 */
+  const canRead = (p: Post) => !p.secret || isAdmin || (!!p.authorId && p.authorId === user?.id);
 
   if (!boardsLoaded) return <section className="page" />;
 
@@ -133,15 +136,22 @@ function BoardInner() {
           {pageList.map(p => (
             <div className="brow" key={p.id} onClick={() => { if (canRead(p)) router.push(`/board/${p.id}`); }}>
               <span className="cat">{postBadge(p)}</span>
-              {canRead(p) ? (
-                <b>
-                  {p.secret && '🔒 '}{p.title}
-                  {cmtCount(p) > 0 && <span className="cmt">{cmtCount(p)}</span>}
-                  {p.fold && <span style={{ ...boardBadgeStyle(boardSet.system[2]), marginLeft: 6 }}>{boardSet.system[2].label}</span>}
-                </b>
-              ) : (
-                <b style={{ color: 'var(--faint)' }}>🔒 비밀글입니다</b>
-              )}
+              {/* 제목 칸 안에서 태그를 오른쪽 끝(=작성자 바로 왼쪽)에 정렬 (v2.0 사용자 요청) —
+                  칸을 따로 만들면 행마다 그리드가 독립이라 작성자 열이 태그 길이만큼 어긋난다 */}
+              <div className="tcell">
+                {canRead(p) ? (
+                  <b>
+                    {p.secret && '🔒 '}{p.title}
+                    {cmtCount(p) > 0 && <span className="cmt">{cmtCount(p)}</span>}
+                    {p.fold && <span style={{ ...boardBadgeStyle(boardSet.system[2]), marginLeft: 6 }}>{boardSet.system[2].label}</span>}
+                  </b>
+                ) : (
+                  <b style={{ color: 'var(--faint)' }}>🔒 비밀글입니다</b>
+                )}
+                {canRead(p) && (p.tags ?? []).length > 0 && (
+                  <span className="tags">{(p.tags ?? []).map(t => <i key={t}>#{t}</i>)}</span>
+                )}
+              </div>
               <span className="who">{p.author}</span>
               <span className="dt">{fmtDate(p.date)}</span>
             </div>

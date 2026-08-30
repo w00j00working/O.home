@@ -2,6 +2,8 @@
 // 그림백업 상세 (4.11) — 로그형: 세로 스크롤 뷰어 / 단일형: 큰 이미지 + 썸네일 스트립 + 좌우 넘김
 import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useHrefBlock } from '@/components/shell/MenuGuard';
+import { sectionHref, MAIN_SEC, useSectionTitle } from '@/lib/sectionStore';
 import { useAuth } from '@/lib/auth';
 import { useLocalList, fmtDate } from '@/lib/postStore';
 import { BackupPost, BACKUP_SEED } from '@/lib/galleryStore';
@@ -23,11 +25,18 @@ export default function BackupDetailPage() {
   const { st: boardSet } = useBoardSettings(); // 유형 뱃지 색 (환경설정 > 게시판 관리)
 
   const p = posts.find(x => x.id === id);
+  /* 이 글이 속한 곳이 비공개면 주소로 들어와도 열리지 않게 (v2.0 사용자 요청).
+     글 주소에는 섹션이 없어 MenuGuard가 못 막는다 — 글을 읽어 소속을 알아낸 여기서 판정한다.
+     **다른 early return보다 먼저 불러야 한다**(훅이므로 렌더마다 개수가 같아야 한다) */
+  const blocked = useHrefBlock(p && sectionHref('gallery', p.secId ?? MAIN_SEC));
+  // 큰 글씨 — 추가 섹션이면 그 이름, 눌렀을 때도 그 목록으로 (v2.0 사용자 제보)
+  const tt = useSectionTitle('gallery', p?.secId, 'GALLERY');
+  if (blocked) return blocked;
   if (!loaded) return <section className="page" />;
   if (!p || (p.visibility === 'private' && !isAdmin) || (p.visibility === 'member' && !user)) {
     return (
       <section className="page">
-        <div className="page-head"><PageTitle>GALLERY</PageTitle><p>게시물을 찾을 수 없거나 열람 권한이 없습니다</p></div>
+        <div className="page-head"><PageTitle href={tt.href}>{tt.title}</PageTitle><p>게시물을 찾을 수 없거나 열람 권한이 없습니다</p></div>
       </section>
     );
   }
@@ -35,7 +44,10 @@ export default function BackupDetailPage() {
   const imgs: { url?: string; ph?: string }[] = p.images.length
     ? p.images.map(u => ({ url: u }))
     : p.phList.map(c => ({ ph: c }));
-  const canManage = isAdmin || p.authorId === user?.id;
+  /* 글쓴이 확인 (v2.0 발견) — **둘 다 없을 때 같다고 보면 안 된다.**
+     예전 글이나 손님이 쓴 글은 authorId가 없는데, 비로그인 방문자도 user?.id가 없어
+     `undefined === undefined`로 통과했다 — 아무나 남의 글을 고치고 지울 수 있었다 */
+  const canManage = isAdmin || (!!p.authorId && p.authorId === user?.id);
 
   // 파일 id/URL 모두 지원 — blobStore에서 로드 (새로고침에도 유지)
   // natural: 고정 프레임 안에서 확대 없이 원본 크기 그대로 가운데 (단일형 — 프레임보다 크면 축소만)
@@ -55,10 +67,14 @@ export default function BackupDetailPage() {
   return (
     <section className="page">
       <div className="page-head">
-        <PageTitle>GALLERY</PageTitle>
-        <p>{p.category} · {p.author} · {fmtDate(p.date)}{p.madeDate ? ` · 제작 ${p.madeDate}` : ''}</p>
+        <PageTitle href={tt.href}>{tt.title}</PageTitle>
+        <p>
+          {p.category} · {p.author} · {fmtDate(p.date)}{p.madeDate ? ` · 제작 ${p.madeDate}` : ''}
+          {/* 태그 (v2.0 사용자 요청) — 목록과 같은 표기 */}
+          {(p.tags ?? []).map(t => <i key={t} className="tag-in">#{t}</i>)}
+        </p>
         <div className="head-actions">
-          {canManage && <button className="btn btn-dark" onClick={() => router.push(`/backup/${p.id}/edit`)}>EDIT</button>}
+          {canManage && <button className="btn btn-dark" onClick={() => router.push(`/gallery/${p.id}/edit`)}>EDIT</button>}
           {canManage && <button className="btn btn-dark" onClick={() => setDelAsk(true)}>DELETE</button>}
         </div>
       </div>
@@ -135,7 +151,7 @@ export default function BackupDetailPage() {
       <ConfirmModal open={delAsk} title="게시물을 삭제하시겠습니까?" body="삭제한 게시물은 복구할 수 없습니다."
         onClose={() => setDelAsk(false)}
         buttons={[
-          { label: 'DELETE', kind: 'accent', onClick: () => { setPosts(posts.filter(x => x.id !== p.id)); router.push('/backup'); } },
+          { label: 'DELETE', kind: 'accent', onClick: () => { setPosts(posts.filter(x => x.id !== p.id)); router.push(tt.href); } },
           { label: 'CANCEL', kind: 'ghost', onClick: () => setDelAsk(false) },
         ]} />
     </section>

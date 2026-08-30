@@ -24,12 +24,12 @@ export function collectMyItems(
     ].filter(c => c.authorId === userId)
       .map(c => ({ kind: `${boardName(p)} 댓글`, text: c.text, date: c.date, href: `/board/${p.id}` }))),
     ...roads.filter(it => it.authorId === userId)
-      .map(it => ({ kind: '로드비 그림', text: it.title, date: it.date, href: '/roadview' })),
+      .map(it => ({ kind: '로드비 그림', text: it.title, date: it.date, href: '/loadb' })),
     ...roads.flatMap(it => [
       ...it.comments,
       ...cmtRows.filter(c => c.target === 'road' && c.targetId === it.id),
     ].filter(c => c.authorId === userId)
-      .map(c => ({ kind: '로드비 댓글', text: c.text, date: c.date, href: '/roadview' }))),
+      .map(c => ({ kind: '로드비 댓글', text: c.text, date: c.date, href: '/loadb' }))),
     ...guestEntries.filter(e => e.authorId === userId)
       .map(e => ({ kind: '방명록', text: e.body, date: e.date, href: '/guest' })),
   ].sort((a, b) => b.date.localeCompare(a.date));

@@ -35,15 +35,16 @@ export interface Comment {
 export const COMMENT_KEY = 'ohome.comments.v1';
 
 export interface CommentRow extends Comment {
-  targetId: string;                 // 달린 대상(글·로드뷰 항목)의 id
-  target: 'post' | 'road';          // 대상 종류 — 같은 컬렉션을 나눠 쓴다
+  targetId: string;                 // 달린 대상(글·로드뷰 항목·감상타래·방명록)의 id
+  /** 대상 종류 — 같은 컬렉션을 나눠 쓴다 (thread·guest: v2.0 사용자 요청) */
+  target: 'post' | 'road' | 'thread' | 'guest';
 }
 
 export const COMMENT_SEED: CommentRow[] = [];
 
 /** 대상 하나의 댓글 — 분리 저장분 + 옛 글 안에 남아 있던 것(legacy)을 합쳐 시간순으로 */
 export function commentsFor(
-  rows: CommentRow[], target: 'post' | 'road', targetId: string, legacy: Comment[] = [],
+  rows: CommentRow[], target: CommentRow['target'], targetId: string, legacy: Comment[] = [],
 ): Comment[] {
   const mine = rows.filter(r => r.target === target && r.targetId === targetId);
   const seen = new Set(mine.map(r => r.id));
@@ -70,6 +71,8 @@ export interface Post {
   fold: { type: FoldType; label?: string } | null; // 스포일러/수위 접기 (6.2)
   comments: Comment[];
   boardId?: string;      // 소속 게시판 (5.2 다중 게시판 — 없으면 기본 'main')
+  /** 태그 (v2.0 사용자 요청) — 기본형 목록의 작성자 왼쪽에 나열되고 검색에 걸린다 */
+  tags?: string[];
   thumbSrc?: string;     // 티켓 스킨 대표 이미지 — 본문에 삽입한 이미지 중 선택 (v1.9)
   thumbCrop?: { x: number; y: number; scale: number };  // 대표 썸네일 크롭 (16:9)
 }

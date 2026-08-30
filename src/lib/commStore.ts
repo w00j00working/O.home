@@ -44,6 +44,8 @@ export const SLOT_CHARS: Record<SlotShape, { filled: string; empty: string }> = 
 };
 
 export interface CommItem {
+  /** 소속 섹션 (v2.0) — 여러 개로 만들었을 때. 없으면 기본 섹션 */
+  secId?: string;
   id: string;
   name: string;
   sub: string;                 // 서브 타이틀
