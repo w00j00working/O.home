@@ -2112,20 +2112,38 @@ function MenuPane() {
     }
   };
 
-// 메뉴별 권한 부속 — 권한 탭용 (v1.9)
+// 메뉴별 권한 부속 — 권한 탭용 (v1.9 및 추가 권한)
   const extraPerm = (href: string) => {
-    // 역극 — 비로그인 안내 문구 (관리자는 그 화면을 볼 수 없어 여기서 편집)
+    const anyPatch = patch as any; // 타입 검사 강제 우회용
+
+    // 1. 역극(/rp) — 비로그인 안내 문구 + 글쓰기/댓글 권한
     if (href === '/rp') {
       return (
-        <KInput value={rpGate}
-          onChange={e => { setRpGate(e.target.value); setPageText('rp-gate-desc', e.target.value); }}
-          placeholder="비로그인 안내 문구" style={{ width: 210, fontSize: 12 }} />
+        <>
+          <KInput value={rpGate}
+            onChange={e => { setRpGate(e.target.value); setPageText('rp-gate-desc', e.target.value); }}
+            placeholder="비로그인 안내 문구" style={{ width: 210, fontSize: 12 }} />
+          {permSel('글쓰기', (ms as any).rpWrite ?? 'member', v => anyPatch({ rpWrite: v }))}
+          {permSel('댓글', (ms as any).rpComment ?? 'member', v => anyPatch({ rpComment: v }))}
+        </>
       );
     }
 
-// 🌟 [추가] 갤러리 업로드 및 댓글 권한 드롭다운 (타입 검사 우회)
+    // 2. 🌟 [추가] MAIN 및 TRPG 탭의 나머지 메뉴들 일괄 적용
+    const genericPaths = ['/chars', '/rels', '/tchars', '/trpg', '/dotori', '/playlog'];
+    if (genericPaths.some(p => href === p || href.startsWith(p + '?'))) {
+      // 주소에서 '/'를 떼어내어 고유 키로 사용 (예: '/chars' -> 'chars')
+      const key = href.split('?')[0].replace('/', ''); 
+      return (
+        <>
+          {permSel('글쓰기', (ms as any)[`${key}Write`] ?? 'member', v => anyPatch({ [`${key}Write`]: v }))}
+          {permSel('댓글', (ms as any)[`${key}Comment`] ?? 'member', v => anyPatch({ [`${key}Comment`]: v }))}
+        </>
+      );
+    }
+
+    // 3. 갤러리 업로드 및 댓글 권한
     if (href === '/gallery' || href.startsWith('/gallery')) {
-      const anyPatch = patch as any; // patch 함수 자체의 타입 검사를 무력화합니다.
       return (
         <>
           {permSel('업로드', (ms as any).galUpload ?? 'member', v => anyPatch({ galUpload: v }))}
@@ -2134,7 +2152,7 @@ function MenuPane() {
       );
     }
 
-    // 게시판 글쓰기·댓글 권한 (게시판별)
+    // 4. 게시판 글쓰기·댓글 권한 (기존 로직 유지)
     if (href === '/board' || href.startsWith('/board?b=')) {
       const bid = href === '/board' ? MAIN_BOARD_ID : href.slice('/board?b='.length);
       const bd = boards.find(b => b.id === bid);
@@ -2157,6 +2175,19 @@ function MenuPane() {
         </>
       );
     }
+
+    // 5. 로드비 권한 (기존 로직 유지)
+    if (href === '/loadb') {
+      return (
+        <>
+          {permSel('업로드', ms.roadUpload, v => patch({ roadUpload: v }))}
+          {permSel('댓글', ms.roadComment, v => patch({ roadComment: v }))}
+        </>
+      );
+    }
+
+    return null;
+  };
     if (href === '/loadb') {
       return (
         <>
