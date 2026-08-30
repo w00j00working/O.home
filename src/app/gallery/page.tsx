@@ -13,7 +13,7 @@ import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { useBoardSettings, boardBadgeStyle } from '@/lib/boardStore';
 import { useMainStore } from '@/lib/mainStore';
 import { useCardSort, mergeOrder } from '@/lib/cardSort';
-import { useMenuSettings } from '@/lib/menuStore';
+import { useMenuSettings, MenuPerm } from '@/lib/menuStore'; // 16번 줄을 지우고 이렇게 한 줄만 남기세요
 import { useMenuSettings, MenuPerm } from '@/lib/menuStore'; // MenuPerm 추가
 
 const FOLD_LABEL = { spoiler: '스포일러', adult: '수위 주의' };
@@ -35,8 +35,8 @@ function BackupPageInner() {
   useEffect(() => {
     if (menuLoaded && !viewInit) { setView(menuSet.backupView); setViewInit(true); }
   }, [menuLoaded, viewInit, menuSet.backupView]);
-  // 🌟 [추가] 업로드 권한 체크 로직
-  const permUpload: MenuPerm = menuSet.galUpload ?? 'member'; // 기본값: 가입자
+  // 🌟 (menuSet as any) 로 변경하여 에러 방지
+  const permUpload: MenuPerm = (menuSet as any).galUpload ?? 'member'; // 기본값: 가입자
   const canUpload = 
     isAdmin || 
     (permUpload === 'guest') || 
