@@ -13,7 +13,6 @@ import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { useBoardSettings, boardBadgeStyle } from '@/lib/boardStore';
 import { useMainStore } from '@/lib/mainStore';
 import { useCardSort, mergeOrder } from '@/lib/cardSort';
-import { useMenuSettings, MenuPerm } from '@/lib/menuStore'; // 16번 줄을 지우고 이렇게 한 줄만 남기세요
 import { useMenuSettings, MenuPerm } from '@/lib/menuStore'; // MenuPerm 추가
 
 const FOLD_LABEL = { spoiler: '스포일러', adult: '수위 주의' };
