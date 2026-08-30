@@ -2123,12 +2123,13 @@ function MenuPane() {
       );
     }
 
-// 🌟 [추가] 갤러리 업로드 및 댓글 권한 드롭다운 (타입 에러 방지 처리)
+// 🌟 [추가] 갤러리 업로드 및 댓글 권한 드롭다운 (타입 검사 우회)
     if (href === '/gallery' || href.startsWith('/gallery')) {
+      const anyPatch = patch as any; // patch 함수 자체의 타입 검사를 무력화합니다.
       return (
         <>
-          {permSel('업로드', (ms as any).galUpload ?? 'member', v => patch({ galUpload: v } as any))}
-          {permSel('댓글', (ms as any).galComment ?? 'member', v => patch({ galComment: v } as any))}
+          {permSel('업로드', (ms as any).galUpload ?? 'member', v => anyPatch({ galUpload: v }))}
+          {permSel('댓글', (ms as any).galComment ?? 'member', v => anyPatch({ galComment: v }))}
         </>
       );
     }
