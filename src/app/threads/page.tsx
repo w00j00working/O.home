@@ -23,6 +23,7 @@ import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { Lightbox } from '@/components/ui/Lightbox';
 import { useToast } from '@/components/ui/Toast';
 import { pushNotif, notifyAdmins } from '@/lib/notifStore';
+import { useMenuSettings } from '@/lib/menuStore'; // 🌟 권한 설정 추가
 
 // 접기 문구 (게시판 6.2와 동일)
 const FOLD_LABEL = { spoiler: '스포일러 주의', adult: '수위 주의' };
@@ -34,7 +35,6 @@ const FOLD_OPTIONS = [
   { value: 'custom', label: '직접 입력 문구' },
 ];
 
-// 사진 첨부 픽토그램 (이모지 아님 — v1.8)
 const PhotoIcon = () => (
   <svg viewBox="0 0 24 24">
     <rect x="3" y="4" width="18" height="16" rx="3" />
@@ -43,7 +43,6 @@ const PhotoIcon = () => (
   </svg>
 );
 
-/** 수정 모달의 기존 첨부 이미지 썸네일 (IndexedDB) */
 function KeepThumb({ id, onRemove }: { id: string; onRemove: () => void }) {
   const url = useBlobUrl(id);
   return (
@@ -55,7 +54,6 @@ function KeepThumb({ id, onRemove }: { id: string; onRemove: () => void }) {
   );
 }
 
-/** 타래 글 이미지 — 1장=와이드, 2~4장=격자 (4.17) · 클릭 시 확대 보기 */
 function PostImgs({ p, onOpen }: { p: ThreadPost; onOpen: (ids: string[], idx: number) => void }) {
   const ids = p.images.length ? p.images : [];
   const phs = !ids.length && p.phList ? p.phList : [];
@@ -78,28 +76,28 @@ function ThreadsPageInner() {
   const del = useConfirmDelete();
   const { familyOf } = useFonts();
   const [worksAll, setWorksAll, loaded] = useLocalList<ThreadWork>('ohome.threads.v1', THREAD_SEED);
-  // 여러 개로 만든 섹션 (v2.0) — 주소의 ?s= 가 가리키는 것만 보여 준다
   const sec = useSectionParam('threads');
   const works = filterSection(worksAll, sec.id);
-  // 저장은 이 섹션 자리만 교체 — 걸러진 목록을 그대로 넘겨도 다른 섹션이 지워지지 않는다
   const setWorks = sectionSetter(worksAll, sec.id, setWorksAll);
   const [settings, , setLoaded] = useThreadSettings();
-  // 분류는 섹션마다 따로 (v2.0 사용자 요청) — 정한 적 없으면 기본 섹션 것
   const cats = threadCats(settings, sec.id);
 
+  // 🌟 환경설정 메뉴 관리에서 지정한 threadsWrite 권한 연동
+  const [menuSet] = useMenuSettings();
+  const permWrite = (menuSet as any).threadsWrite ?? 'member';
+  const canWrite = isAdmin || (permWrite === 'guest') || (permWrite === 'member' && !!user);
+
   const [view, setView] = useState<'thread' | 'list'>('thread');
-  const [lb, setLb] = useState<{ srcs: string[]; idx: number } | null>(null); // 이미지 확대 보기
+  const [lb, setLb] = useState<{ srcs: string[]; idx: number } | null>(null);
   const [viewInit, setViewInit] = useState(false);
   const [cat, setCat] = useState('all');
   const [q, setQ] = useState('');
   const [selId, setSelId] = useState<string | null>(null);
 
-  // 기본 보기 — 환경설정값 로드 후 1회 적용 (v1.8 확정)
   useEffect(() => {
     if (setLoaded && !viewInit) { setView(settings.defaultView); setViewInit(true); }
   }, [setLoaded, viewInit, settings.defaultView]);
 
-  // 공개범위 → 분류 필터 → 검색, 최근 글 순
   const visible = useMemo(() => works
     .filter(w => isAdmin || w.visibility === 'public' || (w.visibility === 'member' && user))
     .filter(w => cat === 'all' || w.catId === cat)
@@ -108,9 +106,7 @@ function ThreadsPageInner() {
 
   const sel = visible.find(w => w.id === selId) ?? visible[0];
 
-  // 댓글 — 글과 따로 저장 (v2.0 사용자 요청, 게시판·로드비와 같은 컬렉션을 target으로 나눠 쓴다)
   const [cmtRows, setCmtRows] = useLocalList<CommentRow>(COMMENT_KEY, COMMENT_SEED);
-  // 타래 우클릭 메뉴 (v2.0 사용자 요청) — 바로 삭제 모달을 띄우지 않고 메뉴를 한 단계 거친다
   const [wCtx, setWCtx] = useState<{ x: number; y: number; id: string } | null>(null);
   useEffect(() => {
     if (!wCtx) return;
@@ -125,19 +121,17 @@ function ThreadsPageInner() {
       window.removeEventListener('keydown', key);
     };
   }, [wCtx]);
-  // 접기 해제한 글 (v2.0 스포일러 쿠션) — 이 화면에 있는 동안만 기억한다
   const [openFolds, setOpenFolds] = useState<Set<string>>(new Set());
 
-  // 이어쓰기 컴포저 (관리자)
   const [text, setText] = useState('');
-  const [foldType, setFoldType] = useState<FoldPick>('none');       // 접기 (v2.0 스포일러 쿠션)
+  const [foldType, setFoldType] = useState<FoldPick>('none');
   const [foldLabel, setFoldLabel] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [urls, setUrls] = useState<string[]>([]);
   const imgRef = useRef<HTMLInputElement>(null);
   const addFiles = (list: FileList | null) => {
     if (!list) return;
-    const next = [...files, ...Array.from(list)].slice(0, 4); // 이미지 4장 제한 (4.17)
+    const next = [...files, ...Array.from(list)].slice(0, 4);
     if (files.length + list.length > 4) toast('이미지는 최대 4장까지 첨부할 수 있습니다');
     setFiles(next);
     setUrls(next.map(f => URL.createObjectURL(f)));
@@ -160,13 +154,12 @@ function ThreadsPageInner() {
     setText(''); setFiles([]); setUrls([]); setFoldType('none'); setFoldLabel('');
   };
 
-  // 글 수정 모달 — 텍스트 + 첨부 이미지 관리 (총 4장 제한)
   const [epId, setEpId] = useState<string | null>(null);
   const [epText, setEpText] = useState('');
-  const [epFoldType, setEpFoldType] = useState<FoldPick>('none');   // 접기 (v2.0)
+  const [epFoldType, setEpFoldType] = useState<FoldPick>('none');
   const [epFoldLabel, setEpFoldLabel] = useState('');
-  const [epKeep, setEpKeep] = useState<string[]>([]);   // 유지할 기존 이미지 id
-  const [epPh, setEpPh] = useState<string[]>([]);       // 유지할 데모 플레이스홀더 (시드)
+  const [epKeep, setEpKeep] = useState<string[]>([]);
+  const [epPh, setEpPh] = useState<string[]>([]);
   const [epFiles, setEpFiles] = useState<File[]>([]);
   const [epUrls, setEpUrls] = useState<string[]>([]);
   const epImgRef = useRef<HTMLInputElement>(null);
@@ -210,17 +203,15 @@ function ThreadsPageInner() {
   const removeWork = (w: ThreadWork) => {
     del.ask(`「${w.title}」 타래를 삭제하시겠습니까?`, () => {
       setWorks(works.filter(x => x.id !== w.id));
-      // 딸린 댓글도 함께 지운다 — 따로 저장되므로 남겨 두면 주인 없는 줄이 된다 (v2.0)
       setCmtRows(cmtRows.filter(c => !(c.target === 'thread' && c.targetId === w.id)));
       setSelId(null);
     }, `타래의 글 ${w.posts.length}개도 함께 삭제됩니다.`);
   };
 
-  /* ---------- 댓글 (v2.0 사용자 요청) — 게시판과 같은 모양: 한 단계 답글, 손님은 닉네임으로 ---------- */
   const [cmt, setCmt] = useState('');
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [gName, setGName] = useState('');
-  const guestMode = !user;                       // 손님 작성 허용 (방명록·로드비 기본과 동일)
+  const guestMode = !user;
   const comments = sel ? commentsFor(cmtRows, 'thread', sel.id) : [];
   const addComment = () => {
     if (!sel || !cmt.trim()) return;
@@ -230,13 +221,11 @@ function ThreadsPageInner() {
       ? { ...base, target: 'thread' as const, targetId: sel.id, author: user.nickname, authorId: user.id }
       : { ...base, target: 'thread' as const, targetId: sel.id, author: gName.trim(), authorId: '' };
     setCmtRows([...cmtRows, c]);
-    /* 알림 (v2.0) — 타래는 관리자의 것이라 관리자에게, 답글이면 그 댓글 주인에게도 */
     notifyAdmins({
       type: 'comment', href: sectionHref('threads', sel.secId ?? 'main'),
       title: `「${sel.title}」 타래에 새 댓글`, body: `${c.author} — ${c.text.slice(0, 50)}`,
     });
     if (replyTo) {
-      // 뿌리 주인만이 아니라 그 대화에 답글을 단 전원에게 (v2.0 포크 제보 — 게시판과 동일)
       const rootAuthor = comments.find(x => x.id === replyTo)?.authorId;
       const seen = new Set<string>();
       for (const t of comments.filter(x => x.id === replyTo || x.parentId === replyTo)) {
@@ -252,7 +241,6 @@ function ThreadsPageInner() {
     }
     setCmt(''); setReplyTo(null);
   };
-  // 댓글 삭제 — 답글도 함께. 손님 댓글은 관리자만 지운다 (게시판 v2.0 확정과 동일)
   const removeComment = (c: Comment) =>
     del.ask('이 댓글을 삭제하시겠습니까?', () =>
       setCmtRows(cmtRows.filter(x => !(x.id === c.id || x.parentId === c.id))));
@@ -269,7 +257,6 @@ function ThreadsPageInner() {
       </div>
 
       <div className="toolrow">
-        {/* 분류 필터 (환경설정 관리 리스트) */}
         <div className="seg">
           <button className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>전체</button>
           {cats.map(c => (
@@ -282,7 +269,8 @@ function ThreadsPageInner() {
             <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>리스트</button>
           </div>
           <SearchBar onSearch={setQ} />
-          {isAdmin && (
+          {/* 🌟 canWrite 조건 적용 */}
+          {canWrite && (
             <button className="btn btn-dark" style={{ whiteSpace: 'nowrap' }}
               onClick={() => router.push('/threads/new' + secQuery('threads', sec.id))}>＋ NEW THREAD</button>
           )}
@@ -294,12 +282,10 @@ function ThreadsPageInner() {
           {q || cat !== 'all' ? '조건에 맞는 타래가 없습니다' : '타래가 없습니다'}
         </div>
       ) : view === 'list' ? (
-        /* 리스트 보기 — 포스터 카드 그리드 (한 줄 5개, 3:4) */
         <div className="g5">
           {visible.map(w => (
             <div key={w.id} className="panel thr-card"
               onClick={() => { setSelId(w.id); setView('thread'); }}
-              /* 우클릭 → 메뉴 → 삭제 확인 모달 (v2.0 사용자 요청) — 리스트 보기에는 삭제 버튼이 없었다 */
               onContextMenu={e => { if (!isAdmin) return; e.preventDefault(); setWCtx({ x: e.clientX, y: e.clientY, id: w.id }); }}>
               <div className="th">
                 <CroppedBlobImg fileRef={w.posterId} crop={w.posterCrop} ph={w.ph} />
@@ -309,7 +295,6 @@ function ThreadsPageInner() {
               </div>
               <div className="info">
                 <div className="tt" style={{ fontFamily: familyOf(w.titleFontId) }}>{w.title}</div>
-                {/* Author 칸 내용 — 제목과 글 수 사이, 2줄까지 (v2.0 포크 사용자 요청) */}
                 {w.author && (
                   <div className="row" style={{
                     display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
@@ -323,7 +308,6 @@ function ThreadsPageInner() {
           ))}
         </div>
       ) : (
-        /* 타래 보기 — 좌 타래 + 우 작품 리스트 */
         <div className="thr-layout">
           <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
             {sel && (
@@ -358,7 +342,6 @@ function ThreadsPageInner() {
                     return (
                       <div key={p.id} className="thr-post">
                         {folded ? (
-                          /* 접기 쿠션 (v2.0 사용자 요청) — 문구만 보이고, 눌러야 내용이 나온다 */
                           <div className="thr-fold" onClick={() => setOpenFolds(s => { const n = new Set(s); n.add(p.id); return n; })}>
                             <b>{p.fold!.type === 'custom' ? (p.fold!.label || '접힌 글') : FOLD_LABEL[p.fold!.type]}</b>
                             <span>클릭하면 내용이 표시됩니다</span>
@@ -368,7 +351,6 @@ function ThreadsPageInner() {
                             {p.text && <p>{p.text}</p>}
                             <PostImgs p={p} onOpen={(ids, idx) => setLb({ srcs: ids, idx })} />
                             {p.fold && (
-                              /* 다시 접기 — 열어 본 뒤에도 쿠션을 되돌릴 수 있게 */
                               <button className="thr-refold" onClick={() => setOpenFolds(s => { const n = new Set(s); n.delete(p.id); return n; })}>접기</button>
                             )}
                           </>
@@ -387,8 +369,8 @@ function ThreadsPageInner() {
                     <p style={{ fontSize: 12.5, color: 'var(--faint)', paddingBottom: 18 }}>아직 글이 없습니다</p>
                   )}
                 </div>
-                {/* 이어쓰기 컴포저 (트위터식, 관리자) */}
-                {isAdmin && (
+                {/* 🌟 관리자 권한뿐만 아니라 canWrite 권한이 있을 때 이어쓰기 컴포저 노출 */}
+                {canWrite && (
                   <div className="thr-write">
                     <textarea placeholder="타래 이어쓰기…" value={text} onChange={e => setText(e.target.value)} />
                     {urls.length > 0 && (
@@ -409,7 +391,6 @@ function ThreadsPageInner() {
                         <button className="icobtn" data-tip="사진 추가 (최대 4장)" onClick={() => imgRef.current?.click()}>
                           <PhotoIcon />
                         </button>
-                        {/* 접기 (v2.0 스포일러 쿠션) — 게시판 글쓰기의 접기와 같은 선택지 */}
                         <KSelect minWidth={122} value={foldType} onChange={v => setFoldType(v as FoldPick)} options={FOLD_OPTIONS} />
                         {foldType === 'custom' && (
                           <KInput placeholder="접기 문구" value={foldLabel} onChange={e => setFoldLabel(e.target.value)}
@@ -422,7 +403,6 @@ function ThreadsPageInner() {
                   </div>
                 )}
 
-                {/* 댓글 (v2.0 사용자 요청) — 게시판과 같은 모양: 한 단계 답글, 손님은 닉네임으로 */}
                 <div className="thr-cmts">
                   <h4>COMMENTS {comments.length > 0 && <span>{comments.length}</span>}</h4>
                   {cmtRoots.map(c => (
@@ -436,7 +416,6 @@ function ThreadsPageInner() {
                               {replyTo === x.id ? '답글 취소' : '답글'}
                             </small>
                           )}
-                          {/* 손님 댓글은 관리자만 지운다 (v2.0 확정) — 서버가 그렇게밖에 못 받는다 */}
                           {(isAdmin || (user && x.authorId === user.id)) && (
                             <small style={{ cursor: 'var(--cur-pointer,pointer)', marginLeft: 8 }}
                               onClick={() => removeComment(x)}>삭제</small>
@@ -460,11 +439,9 @@ function ThreadsPageInner() {
               </>
             )}
           </div>
-          {/* 우측 작품 리스트 */}
           <div className="panel" style={{ padding: 10 }}>
             {visible.map(w => (
               <div key={w.id} className={`thr-item ${sel?.id === w.id ? 'on' : ''}`} onClick={() => setSelId(w.id)}
-                /* 우클릭 → 메뉴 → 삭제 확인 모달 (v2.0 사용자 요청) — 타래 보기의 오른쪽 카드에서도 */
                 onContextMenu={e => { if (!isAdmin) return; e.preventDefault(); setWCtx({ x: e.clientX, y: e.clientY, id: w.id }); }}>
                 <div className="th">
                   <CroppedBlobImg fileRef={w.posterId} crop={w.posterCrop} ph={w.ph} />
@@ -478,7 +455,6 @@ function ThreadsPageInner() {
           </div>
         </div>
       )}
-      {/* 글 수정 모달 — 텍스트 + 이미지 관리 (4장 제한) */}
       <Modal open={epId !== null} onClose={() => setEpId(null)} title="글 수정" dirty
         actions={<>
           <button className="btn btn-ghost" onClick={() => setEpId(null)}>CANCEL</button>
@@ -486,7 +462,6 @@ function ThreadsPageInner() {
         </>}>
         <div style={{ display: 'grid', gap: 10 }}>
           <KTextarea style={{ minHeight: 120 }} value={epText} onChange={e => setEpText(e.target.value)} />
-          {/* 접기 (v2.0 스포일러 쿠션) — 컴포저와 같은 선택지 */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <KSelect minWidth={140} value={epFoldType} onChange={v => setEpFoldType(v as FoldPick)} options={FOLD_OPTIONS} />
             {epFoldType === 'custom' && (
@@ -525,8 +500,6 @@ function ThreadsPageInner() {
           </div>
         </div>
       </Modal>
-      {/* 타래 우클릭 메뉴 (v2.0 사용자 요청) — 여기서 골라야 삭제 확인 모달이 뜬다.
-          카드에 hover transform이 있어 fixed 위치가 어긋나지 않게 body로 포탈 */}
       {wCtx && createPortal(
         (() => {
           const w = works.find(x => x.id === wCtx.id);
@@ -545,7 +518,6 @@ function ThreadsPageInner() {
   );
 }
 
-/** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */
 export default function ThreadsPage() {
   return <Suspense fallback={<section className="page" />}><ThreadsPageInner /></Suspense>;
 }
