@@ -14,6 +14,7 @@ import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { useToast } from '@/components/ui/Toast';
 import { useMenuSettings } from '@/lib/menuStore';
 import { useSectionParam } from '@/lib/sectionStore';
+import { useMenuSettings } from '@/lib/menuStore';
 
 const MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
 const fmt = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -46,7 +47,9 @@ function CalInner() {
 
   if (!loaded) return <section className="page" />;
 
-  const canWrite = isAdmin || (st.allowMember && !!user);
+// 🌟 환경설정 메뉴 관리에서 지정한 calWrite 권한을 읽어옵니다.
+  const permWrite = (menuSet as any).calWrite ?? 'member'; // 기본값: 가입자
+  const canWrite = isAdmin || (permWrite === 'guest') || (permWrite === 'member' && !!user);
   const canSee = (e: SchedEvent) =>
     isAdmin || e.visibility === 'public' || (e.visibility === 'member' && !!user);
 
