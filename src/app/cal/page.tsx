@@ -12,9 +12,8 @@ import { ColorField } from '@/components/ui/ColorField';
 import { DragList } from '@/components/ui/DragList';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { useToast } from '@/components/ui/Toast';
-import { useMenuSettings } from '@/lib/menuStore';
+import { useMenuSettings } from '@/lib/menuStore'; // ← 요렇게 딱 한 줄만 남기기!
 import { useSectionParam } from '@/lib/sectionStore';
-import { useMenuSettings } from '@/lib/menuStore';
 
 const MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
 const fmt = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
