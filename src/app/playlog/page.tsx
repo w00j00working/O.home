@@ -27,20 +27,22 @@ function ClipIcon() {
 
 function PlaylogPageInner() {
   const router = useRouter();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth(); // 🌟 user 추가
   const [recordsAll, setRecordsAll, loaded] = useLocalList<PlayRecord>('ohome.playlog.v1', PLAYLOG_SEED);
-  // 여러 개로 만든 섹션 (v2.0) — 주소의 ?s= 가 가리키는 것만 보여 준다
   const sec = useSectionParam('playlog');
   const records = filterSection(recordsAll, sec.id);
-  // 저장은 이 섹션 자리만 교체 — 걸러진 목록을 그대로 넘겨도 다른 섹션이 지워지지 않는다
   const setRecords = sectionSetter(recordsAll, sec.id, setRecordsAll);
   const [q, setQ] = useState('');
-  const [desc, setDesc] = useState(true);       // Date 정렬 방향
+  const [desc, setDesc] = useState(true);
   const [page, setPage] = useState(1);
   const [delFor, setDelFor] = useState<PlayRecord | null>(null);
 
-  // 표시 열 — 환경설정 > 메뉴 관리에서 PC/모바일 각각 선택 (4.16 v1.8)
   const [menuSet] = useMenuSettings();
+  
+  // 🌟 환경설정 메뉴 관리에서 지정한 playlogWrite 권한 연동
+  const permWrite = (menuSet as any).playlogWrite ?? 'member';
+  const canWrite = isAdmin || (permWrite === 'guest') || (permWrite === 'member' && !!user);
+
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(max-width:620px)');
@@ -52,7 +54,6 @@ function PlaylogPageInner() {
   const cols = isMobile ? menuSet.playlogMobile : menuSet.playlogPc;
   const show = (k: string) => cols.includes(k);
 
-  // 편집모드 행 드래그 정렬 (v1.9) — 편집 중에는 정렬·페이지 없이 저장 순서 전체 표시
   const { editOn } = useMainStore();
   const rowSort = useCardSort(records, next => setRecords(mergeOrder(records, next)), editOn && isAdmin);
 
@@ -64,7 +65,6 @@ function PlaylogPageInner() {
     || r.writer.toLowerCase().includes(query)
     || r.withText.toLowerCase().includes(query));
 
-  // Date 정렬 — 날짜 없는 기록은 항상 맨 아래 (4.16)
   const sorted = [...filtered].sort((a, b) => {
     if (!a.date && !b.date) return 0;
     if (!a.date) return 1;
@@ -72,10 +72,8 @@ function PlaylogPageInner() {
     return desc ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date);
   });
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  // 편집모드: 저장 순서 전체 표시 (드래그 인덱스와 1:1 매칭)
   const shown = editOn ? records : sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  // 모바일 전용 — URL 열이 없으므로 Playtime 밑줄 탭으로 로그 이동 (4.16)
   const openLogMobile = (r: PlayRecord) => {
     if (r.logId && window.matchMedia('(max-width:620px)').matches) router.push(`/trpg/${r.logId}`);
   };
@@ -87,13 +85,13 @@ function PlaylogPageInner() {
         <EditableDesc k="playlog-desc" def="다녀온 세션 기록 — 표 형식" />
         <div className="head-actions">
           <SearchBar placeholder="시나리오·라이터·동행 검색" onSearch={v => { setQ(v); setPage(1); }} />
-          {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/playlog/new' + secQuery('playlog', sec.id))}>＋ ADD RECORD</button>}
+          {/* 🌟 canWrite 조건 적용 */}
+          {canWrite && <button className="btn btn-dark" onClick={() => router.push('/playlog/new' + secQuery('playlog', sec.id))}>＋ ADD RECORD</button>}
         </div>
       </div>
 
       <div className="panel" style={{ padding: '10px 16px 16px', overflowX: 'auto' }}>
         <table className="pl-table">
-          {/* 열 구성 — 환경설정 > 메뉴 관리에서 PC/모바일 각각 선택 (4.16 v1.8) */}
           <colgroup>
             {show('date') && <col className="c-date" />}
             {show('scenario') && <col className="c-sc" />}
@@ -140,7 +138,6 @@ function PlaylogPageInner() {
                     {r.playtime}
                   </td>
                 )}
-                {/* 클립 칸 — 외부 URL 또는 백업 로그 연결 (4.16) */}
                 {show('url') && (
                   <td className="td-url">
                     {r.url ? (
@@ -183,7 +180,6 @@ function PlaylogPageInner() {
   );
 }
 
-/** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */
 export default function PlaylogPage() {
   return <Suspense fallback={<section className="page" />}><PlaylogPageInner /></Suspense>;
 }
