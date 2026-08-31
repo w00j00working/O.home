@@ -11,14 +11,20 @@ import { useConfirmDelete } from '@/components/ui/Modal';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { useMainStore } from '@/lib/mainStore';
 import { useCardSort, mergeOrder } from '@/lib/cardSort';
+import { useMenuSettings } from '@/lib/menuStore'; // 🌟 권한 설정 추가
 
 export default function TCharsPage() {
   const router = useRouter();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth(); // 🌟 user 추가
   const { editOn } = useMainStore();
   const del = useConfirmDelete();
   const [tchars, setTchars, loaded] = useLocalList<TrpgChar>('ohome.tchars.v1', TCHAR_SEED);
   const [q, setQ] = useState('');
+
+  // 🌟 환경설정 메뉴 관리에서 지정한 tcharsWrite 권한 연동
+  const [menuSet] = useMenuSettings();
+  const permWrite = (menuSet as any).tcharsWrite ?? 'member';
+  const canWrite = isAdmin || (permWrite === 'guest') || (permWrite === 'member' && !!user);
 
   const query = q.trim().toLowerCase();
   const shown = tchars.filter(c => !query
@@ -27,7 +33,6 @@ export default function TCharsPage() {
     || c.rule.toLowerCase().includes(query)
     || c.role.toLowerCase().includes(query));
 
-  // 편집모드 카드 드래그 정렬 (v1.9) — 훅이므로 early return보다 먼저
   const sort = useCardSort(shown, next => setTchars(mergeOrder(tchars, next)), editOn && isAdmin);
 
   if (!loaded) return <section className="page" />;
@@ -39,13 +44,14 @@ export default function TCharsPage() {
         <EditableDesc k="tchars-desc" def="1:1 인장 카드 — 클릭하면 표정과 소개를 볼 수 있습니다" />
         <div className="head-actions">
           <SearchBar placeholder="이름·시나리오·룰·역할 검색" onSearch={setQ} />
-          {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/tchars/new')}>＋ ADD</button>}
+          {/* 🌟 canWrite 조건 적용 */}
+          {canWrite && <button className="btn btn-dark" onClick={() => router.push('/tchars/new')}>＋ ADD</button>}
         </div>
       </div>
 
       <div className="tc-grid">
         {shown.map((c, i) => {
-          const face = c.faces[0]; // 대표 인장 = 첫 표정
+          const face = c.faces[0];
           return (
             <div key={c.id} className="panel tc-card" {...sort(i)}
               style={{ cursor: 'var(--cur-pointer,pointer)', ...(sort(i) as { style?: React.CSSProperties }).style }}
@@ -70,7 +76,6 @@ export default function TCharsPage() {
                 <small className="meta">{[c.scenario, c.rule].filter(Boolean).join(' · ')}</small>
                 {c.desc && (
                   <div className="desc">
-                    {/* 태그 제거한 일반 텍스트 — 2줄 말줄임 (전체 설명은 상세에서) */}
                     {c.desc.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()}
                   </div>
                 )}
