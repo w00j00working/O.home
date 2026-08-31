@@ -13,6 +13,7 @@ import { ConfirmModal } from '@/components/ui/Modal';
 import { Lightbox } from '@/components/ui/Lightbox';
 import { BlobImg } from '@/lib/blobStore';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
+import { useMenuSettings } from '@/lib/menuStore'; // 🌟 권한 설정 추가
 
 const PAGE_SIZE = 10;
 
@@ -20,7 +21,6 @@ function MoodIcon({ mood, size = 30 }: { mood?: Mood; size?: number }) {
   return (
     <span style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      // 줄높이를 1로 눌러야 글자 상자가 아니라 글자 자체가 가운데로 온다 (v2.0 사용자 발견)
       display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
       fontSize: size * 0.45,
       background: moodTint(mood?.color ?? '#888'), color: mood?.color ?? 'var(--sub)',
@@ -33,7 +33,6 @@ function DiaryBody({ p, onOpen }: { p: DiaryPost; onOpen: (ids: string[], idx: n
   return (
     <div className="dy-body">
       <div className="post-body" dangerouslySetInnerHTML={{ __html: html }} />
-      {/* 이미지는 썸네일 리스트로 — 클릭하면 뷰어(좌우 넘김) (v1.9 사용자 확정) */}
       {p.imgIds.length > 0 && (
         <div className="dy-thumbs">
           {p.imgIds.map((id, i) => (
@@ -51,10 +50,8 @@ function DiaryPageInner() {
   const router = useRouter();
   const { user, isAdmin } = useAuth();
   const [postsAll, setPostsAll, loaded] = useLocalList<DiaryPost>('ohome.diary.v1', DIARY_SEED);
-  // 여러 개로 만든 섹션 (v2.0) — 주소의 ?s= 가 가리키는 것만 보여 준다
   const sec = useSectionParam('diary');
   const posts = filterSection(postsAll, sec.id);
-  // 저장은 이 섹션 자리만 교체 — 걸러진 목록을 그대로 넘겨도 다른 섹션이 지워지지 않는다
   const setPosts = sectionSetter(postsAll, sec.id, setPostsAll);
   const [moods] = useLocalList<Mood>('ohome.moods.v1', MOOD_SEED);
   const [open, setOpen] = useState<string | null>(null);
@@ -62,13 +59,16 @@ function DiaryPageInner() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [delFor, setDelFor] = useState<DiaryPost | null>(null);
-  const [lb, setLb] = useState<{ srcs: string[]; idx: number } | null>(null); // 이미지 뷰어 (v1.9)
-  // 미니 캘린더 (4.14 달력 보기) — 달을 넘기면 그 달의 일기만 표시
+  const [lb, setLb] = useState<{ srcs: string[]; idx: number } | null>(null);
   const now = new Date();
   const [view, setView] = useState<{ y: number; m: number }>({ y: now.getFullYear(), m: now.getMonth() });
   const [monthFilter, setMonthFilter] = useState(false);
 
-  // 메인 위젯에서 특정 일기로 진입 — /diary#id (4.14)
+  // 🌟 환경설정 메뉴 관리에서 지정한 diaryWrite 권한 연동
+  const [menuSet] = useMenuSettings();
+  const permWrite = (menuSet as any).diaryWrite ?? 'member';
+  const canWrite = isAdmin || (permWrite === 'guest') || (permWrite === 'member' && !!user);
+
   useEffect(() => {
     const h = window.location.hash.slice(1);
     if (h) setOpen(h);
@@ -86,7 +86,6 @@ function DiaryPageInner() {
     .filter(p => !monthFilter || p.date.startsWith(monthKey))
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  // 캘린더 표시용 — 보이는 달의 일기 (일 → 글 목록)
   const byDay = new Map<number, DiaryPost[]>();
   posts.filter(canSee).filter(p => p.date.startsWith(monthKey)).forEach(p => {
     const d = parseInt(p.date.slice(8, 10), 10);
@@ -112,8 +111,6 @@ function DiaryPageInner() {
         <EditableDesc k="diary-desc" def="무드 일기 — 클릭하면 그 자리에서 펼쳐집니다" />
       </div>
 
-      {/* 무드 필터 + 달 필터 표시 + 검색·WRITE — 필터 줄 오른쪽 정렬 (v1.9 사용자 요청).
-          그리드 밖(풀폭): 캘린더가 일기 패널과 같은 높이에서 시작 */}
       <div className="toolrow" style={{ marginBottom: 16 }}>
         <div className="tag-row">
           <div className={`tag ${fMood === 'all' ? 'on' : ''}`} onClick={() => { setFMood('all'); setPage(1); }}>
@@ -133,11 +130,11 @@ function DiaryPageInner() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SearchBar placeholder="제목 검색" onSearch={v => { setQ(v); setPage(1); }} />
-          {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/diary/write')}>＋ WRITE</button>}
+          {/* 🌟 canWrite 조건 적용 */}
+          {canWrite && <button className="btn btn-dark" onClick={() => router.push('/diary/write')}>＋ WRITE</button>}
         </div>
       </div>
 
-      {/* 좌 리스트 + 우 미니 캘린더 (4.14 달력 보기) — 두 패널 시작 높이 동일 */}
       <div className="dy-layout">
       <div>
       <div className="panel" style={{ padding: '6px 20px' }}>
@@ -146,7 +143,6 @@ function DiaryPageInner() {
           const opened = open === p.id;
           return (
             <div key={p.id} id={p.id} className={`dy-row ${opened ? 'open' : ''}`}>
-              {/* 접힘: 제목 세로 중앙 / 펼침: 위 정렬 (4.14 v1.8) */}
               <div className="hd" onClick={() => setOpen(o => (o === p.id ? null : p.id))}>
                 <MoodIcon mood={m} />
                 <b className="tt">{p.title}</b>
@@ -156,7 +152,6 @@ function DiaryPageInner() {
                 <small className="dt">{p.date.replace(/-/g, '.')}{m ? ` · ${m.name}` : ''}</small>
                 <span className={`arr ${opened ? 'up' : ''}`} />
               </div>
-              {/* 항상 렌더 + grid-rows 트랜지션으로 부드럽게 펼침 (덜컥임 방지) */}
               <div className="dy-fold" aria-hidden={!opened}>
                 <div className="dy-fold-in">
                   <DiaryBody p={p} onOpen={(ids, idx) => setLb({ srcs: ids, idx })} />
@@ -181,7 +176,6 @@ function DiaryPageInner() {
       </div>
       </div>
 
-      {/* 우: 미니 캘린더 — 일기 쓴 날은 무드색 점, 달을 넘기면 그 달만 목록에 */}
       <div className="panel dy-cal">
         <div className="hd">
           <button type="button" onClick={() => mv(-1)}>‹</button>
@@ -221,13 +215,11 @@ function DiaryPageInner() {
           { label: 'DELETE', kind: 'accent', onClick: () => { setPosts(posts.filter(x => x.id !== delFor!.id)); setDelFor(null); } },
           { label: 'CANCEL', kind: 'ghost', onClick: () => setDelFor(null) },
         ]} />
-      {/* 이미지 뷰어 — 썸네일 클릭 시 (v1.9 사용자 확정) */}
       {lb && <Lightbox srcs={lb.srcs} index={lb.idx} onClose={() => setLb(null)} />}
     </section>
   );
 }
 
-/** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */
 export default function DiaryPage() {
   return <Suspense fallback={<section className="page" />}><DiaryPageInner /></Suspense>;
 }
