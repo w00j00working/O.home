@@ -81,7 +81,7 @@ function CharEditInner() {
                   colors: c.colors, colorTipMode: c.colorTipMode,
                   specs: c.specs, tabs: c.tabs, basicHtml: c.basicHtml,
                   arts: c.arts, thumbId: c.thumbId, thumbCrop: c.thumbCrop,
-                  fontId: c.fontId, nameSize: c.nameSize, bodyFontId: c.bodyFontId,
+                  fontId: c.fontId, nameSize: c.nameSize, nameBold: c.nameBold, bodyFontId: c.bodyFontId,
                 },
               },
             } : x)));

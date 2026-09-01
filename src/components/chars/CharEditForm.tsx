@@ -8,8 +8,8 @@ import { Character, CharTab, ColorChip, Visibility, CharGrant } from '@/lib/char
 import { GrantsEditor } from '@/components/chars/GrantsEditor';
 import { newId } from '@/lib/postStore';
 import { putBlob, getBlob, useBlobUrl } from '@/lib/blobStore';
-import { useFonts } from '@/lib/fontStore';
-import { KInput, KSelect, KStep } from '@/components/ui/Kit';
+import { useFonts, deVarFamily } from '@/lib/fontStore';
+import { KInput, KSelect, KStep, KCheck } from '@/components/ui/Kit';
 import { RichEditor } from '@/components/ui/RichEditor';
 import { ColorField } from '@/components/ui/ColorField';
 import { CropEditor, CropValue, CropImg } from '@/components/ui/CropEditor';
@@ -54,6 +54,7 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
   const [visibility, setVisibility] = useState<Visibility>(initial?.visibility ?? 'public');
   const [fontId, setFontId] = useState(initial?.fontId ?? 'serif');
   const [nameSize, setNameSize] = useState(initial?.nameSize ?? 38);   // 상세 큰 이름 크기 (v2.0)
+  const [nameBold, setNameBold] = useState(initial?.nameBold ?? true); // 상세 이름 볼드 (v2.0 — 기본 켜짐)
   const [bodyFontId, setBodyFontId] = useState(initial?.bodyFontId ?? 'default');
   const [specs, setSpecs] = useState<SpecRow[]>(
     (initial?.specs ?? [{ label: '성별', value: '' }, { label: '키', value: '' }]).map(s => ({ ...s, id: newId() })));
@@ -109,6 +110,7 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
       visibility,
       fontId,
       nameSize,
+      nameBold,
       bodyFontId,
       thumbClass: initial?.thumbClass ?? '',
       arts: artIds,
@@ -327,18 +329,20 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
             <KSelect value={fontId} onChange={setFontId}
               options={fonts.map(f => ({
                 value: f.id,
-                label: <span style={{ fontFamily: f.family }}>{f.name}</span>,
+                label: <span style={{ fontFamily: deVarFamily(f.family) }}>{f.name}</span>,
               }))} />
             {/* 이름 길이가 제각각이라 자동으로 줄이면 어중간해진다 — 캐릭터마다 직접 정한다 (v2.0) */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <span className="k-label" style={{ margin: 0, flex: 1 }}>상세 이름 크기</span>
+              {/* 폰트에 따라 볼드가 어색한 경우가 있어 끌 수 있게 (v2.0 사용자 요청) — 기본은 지금까지처럼 볼드 */}
+              <KCheck label="Bold" checked={nameBold} onChange={setNameBold} />
               <KStep value={nameSize} onChange={setNameSize} min={14} max={72} step={1} suffix="px" />
             </div>
             <p className="hint" style={{ margin: '2px 0 0' }}>본문 폰트 — 프로필 정보·소개 텍스트에 적용</p>
             <KSelect value={bodyFontId} onChange={setBodyFontId}
               options={fonts.map(f => ({
                 value: f.id,
-                label: <span style={{ fontFamily: f.family }}>{f.name}</span>,
+                label: <span style={{ fontFamily: deVarFamily(f.family) }}>{f.name}</span>,
               }))} />
           </div>
         </div>

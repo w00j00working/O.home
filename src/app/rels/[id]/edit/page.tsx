@@ -73,6 +73,7 @@ function RelEditInner() {
                 fullOffY: v.fullOffsets?.[m.charId]?.y ?? m.fullOffY,
                 quote: v.quotes?.[m.charId] ?? m.quote,
                 nameSize: v.nameSizes?.[m.charId] ?? m.nameSize,
+                nameBold: v.nameBolds?.[m.charId] ?? m.nameBold,
                 quoteColor: v.quoteColors?.[m.charId]?.fg ?? m.quoteColor,
                 quoteMarkColor: v.quoteColors?.[m.charId]?.mark ?? m.quoteMarkColor,
               }))
@@ -102,6 +103,7 @@ function RelEditInner() {
                     fullOffY: v.fullOffsets?.[m.charId]?.y,
                     quote: v.quotes?.[m.charId],
                     nameSize: v.nameSizes?.[m.charId],
+                    nameBold: v.nameBolds?.[m.charId],
                     quoteColor: v.quoteColors?.[m.charId]?.fg,
                     quoteMarkColor: v.quoteColors?.[m.charId]?.mark,
                   }])),
@@ -126,6 +128,7 @@ function RelEditInner() {
                       fullOffY: v.fullOffsets?.[m.charId]?.y ?? m.fullOffY,
                       quote: v.quotes?.[m.charId] ?? m.quote,
                       nameSize: v.nameSizes?.[m.charId] ?? m.nameSize,
+                      nameBold: v.nameBolds?.[m.charId] ?? m.nameBold,
                       quoteColor: v.quoteColors?.[m.charId]?.fg ?? m.quoteColor,
                       quoteMarkColor: v.quoteColors?.[m.charId]?.mark ?? m.quoteMarkColor,
                     })),

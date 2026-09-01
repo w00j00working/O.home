@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useLocalList, newId, FoldType } from '@/lib/postStore';
 import { useSectionParam, secStamp, MAIN_SEC, useSectionTitle } from '@/lib/sectionStore';
+import { useMenuSettings, canGalleryWrite } from '@/lib/menuStore';
 import { BackupPost, BACKUP_SEED } from '@/lib/galleryStore';
 import { useBoardSettings, DEFAULT_GALLERY_CATS, galleryCatsOf } from '@/lib/boardStore';
 import { useConfirmDelete } from '@/components/ui/Modal';
@@ -45,7 +46,9 @@ function CropModal({ f, onClose, onApply }: { f: UpFile; onClose: () => void; on
 
 export function BackupForm({ initial }: { initial: BackupPost | null }) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
+  // 갤러리 글쓰기 권한 (v2.0 사용자 요청) — 아래 새 글 가드에서 확인
+  const [menuSet, , menuLoaded] = useMenuSettings();
   const toast = useToast();
   const [posts, setPosts] = useLocalList<BackupPost>('ohome.backup.v1', BACKUP_SEED);
   // 어느 갤러리에서 눌러 왔는지 (v2.0) — 새 글을 그 목록에 넣고, 끝나면 그 목록으로 돌아간다
@@ -92,6 +95,18 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
     return (
       <section className="page">
         <div className="page-head"><PageTitle href={tt.href}>{tt.title}</PageTitle><p>글쓰기는 로그인 후 이용할 수 있습니다</p></div>
+      </section>
+    );
+  }
+
+  /* 갤러리 글쓰기 권한 (v2.0 사용자 요청) — WRITE 버튼과 같은 판정으로 주소 직접 진입도 막는다.
+     새 글만이다 — 이미 쓴 자기 글의 수정·삭제는 지금까지처럼 본인(과 관리자) 몫.
+     설정을 읽기 전에는 폼을 그리지 않는다 — 먼저 그리면 막힐 사람에게 폼이 한 번 비친다 */
+  if (isNew && !menuLoaded) return <section className="page" />;
+  if (isNew && !canGalleryWrite(menuSet, sec.id, { loggedIn: true, isAdmin, id: user.id })) {
+    return (
+      <section className="page">
+        <div className="page-head"><PageTitle href={tt.href}>{tt.title}</PageTitle><p>허용된 회원만 글을 쓸 수 있는 갤러리입니다</p></div>
       </section>
     );
   }

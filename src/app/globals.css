@@ -1034,6 +1034,8 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .mini-prof .foot{padding:9px 15px;border-top:1px dashed var(--line);display:flex;justify-content:space-between;font-size:calc(9.5px*var(--fs,1));color:var(--faint)}
 .palette-row{display:flex;gap:6px;padding:0 15px 11px}
 .palette-row .gem{display:inline-block;width:14px;height:14px;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);cursor:help;position:relative}
+/* 테두리용 안쪽 마름모 (v2.0) — 바깥 gem이 테두리색, 안쪽이 실제 색 */
+.palette-row .gem i{position:absolute;inset:1px;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
 .kw-row{display:flex;gap:5px;flex-wrap:wrap;padding:0 15px 13px}
 .rel-desc{font-size:calc(11.5px*var(--fs,1));line-height:1.8;color:#454a52;padding:13px 16px;border-top:1px solid var(--line);white-space:pre-line}
 .card-thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:11px 15px;border-top:1px dashed var(--line)}

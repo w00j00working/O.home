@@ -13,8 +13,7 @@ import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { useBoardSettings, boardBadgeStyle } from '@/lib/boardStore';
 import { useMainStore } from '@/lib/mainStore';
 import { useCardSort, mergeOrder } from '@/lib/cardSort';
-import { useMenuSettings, MenuPerm } from '@/lib/menuStore'; // MenuPerm 추가
-
+import { useMenuSettings, canGalleryWrite } from '@lib/menuPerm';
 const FOLD_LABEL = { spoiler: '스포일러', adult: '수위 주의' };
 
 function BackupPageInner() {
@@ -80,8 +79,10 @@ function BackupPageInner() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SearchBar onSearch={setQ} />
-          {/* 🌟 user 대신 canUpload로 변경 */}
-          {canUpload && <button className="btn btn-dark" onClick={() => router.push('/gallery/write' + secQuery('gallery', sec.id))}>✎ WRITE</button>}
+{/* 글쓰기 권한 (v2.0 사용자 요청) - 메뉴 관리에서 갤러리별로 · 멤버 선택으로 좁힐 수 있다 */}
+{canGalleryWrite(menuSet, sec.id, { loggedIn: !!user, isAdmin, id: user?.id }) && (
+  <button className="btn btn-dark" onClick={() => router.push('/gallery/write' + secQuery('gallery', sec.id))}> WRITE</button>
+)}
         </div>
       </div>
 

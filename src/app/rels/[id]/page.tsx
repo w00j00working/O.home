@@ -149,7 +149,11 @@ function MiniProf({ member, char, isAdmin, onGo, onRemove, auUnregistered, side,
         <div>
           {/* 이름 폰트는 캐릭터 프로필에서 지정한 것을 그대로 쓰고,
               크기는 이 자관에서 정한 값 (자관 수정의 「이름 크기」 — 기본 17px, v2.0) */}
-          <b style={{ fontFamily: familyOf(char.fontId), fontSize: member.nameSize ?? undefined }}>
+          <b style={{
+            fontFamily: familyOf(char.fontId), fontSize: member.nameSize ?? undefined,
+            // 굵기는 끌 수 있다 (v2.0 사용자 요청) — 기본은 지금처럼 굵게(<b>)
+            fontWeight: (member.nameBold ?? true) ? undefined : 400,
+          }}>
             {char.name}
           </b>
           <small>{[char.sub, noteOf(member)].filter(Boolean).join(' · ')}</small>
@@ -165,11 +169,19 @@ function MiniProf({ member, char, isAdmin, onGo, onRemove, auUnregistered, side,
       <div className="palette-row" data-tip="캐릭터 테마색 팔레트">
         {/* `?? `(nullish)로 판단 — 빈 배열은 "색을 다 지웠다"는 뜻이라 그대로 비워야 한다.
             length로 보면 전부 지웠을 때 옛 스냅샷이 되살아난다 (v2.0 사용자 재신고) */}
-        {(char.colors ?? member.palette).map(p => (
-          <Tip key={p.hex + p.label} tip={p.label}>
-            <span className="gem" style={{ background: p.hex }} />
-          </Tip>
-        ))}
+        {/* 색 점 테두리 — 캐릭터의 colorBd 설정을 여기서도 (v2.0 사용자 요청: 카드 배경과
+            구분 안 되는 색이면 자관 상세에서도 테두리가 필요하다). 마름모(clip-path)라
+            box-shadow가 잘리므로, 바깥 마름모를 테두리색으로 깔고 안쪽 마름모에 색을 얹는다 */}
+        {(char.colors ?? member.palette).map(p => {
+          const bd = char.colorBd === 'none' ? null : (char.colorBd ?? 'rgba(0,0,0,.14)');
+          return (
+            <Tip key={p.hex + p.label} tip={p.label}>
+              <span className="gem" style={{ background: bd ?? p.hex }}>
+                {bd && <i style={{ background: p.hex }} />}
+              </span>
+            </Tip>
+          );
+        })}
       </div>
       <div className="kw-row">
         {member.keywords.map(k => <span key={k} className="pill">{k}</span>)}

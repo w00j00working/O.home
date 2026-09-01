@@ -29,7 +29,7 @@ import {
 } from '@/lib/menuStore';
 import { FEATURES } from '@/lib/menu';
 import { SectionsBlock } from '@/components/settings/SectionList';
-import { useSections, sectionMenuEntries, MAIN_SEC, inSection } from '@/lib/sectionStore';
+import { useSections, sectionsOf, sectionMenuEntries, MAIN_SEC, inSection } from '@/lib/sectionStore';
 import { useCustomLinks, linkEntries, toInternalPath } from '@/lib/linkStore';
 import { useSiteDraft } from '@/lib/siteStore';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -1917,6 +1917,50 @@ function DataPane() {
   );
 }
 
+/** 멤버 선택 모달 (v2.0 사용자 요청) — 「비로그인 숨김」 메뉴를 특정 회원에게만.
+ *  검색으로 걸러 체크하고, 비우면 지금까지처럼 로그인한 모든 회원. 관리자는 항상 볼 수 있어 목록에 없다 */
+function MemberPickModal({ initial, onApply, onClose, desc }: {
+  initial: string[]; onApply: (ids: string[]) => void; onClose: () => void;
+  desc?: string;   // 무엇에 대한 선택인지 — 노출 제한/글쓰기 권한이 같은 모달을 쓴다 (v2.0)
+}) {
+  const pool = useMembers().filter(p => p.id !== 'admin' && p.role !== 'admin');
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState<string[]>(initial);
+  const t = q.trim().toLowerCase();
+  const list = pool.filter(p => !t || p.nickname.toLowerCase().includes(t) || p.id.toLowerCase().includes(t));
+  return (
+    <Modal open small title="멤버 선택" onClose={onClose}
+      desc={desc ?? '체크한 회원(그리고 관리자)에게만 이 메뉴가 보이고 열립니다 — 비우면 로그인한 모든 회원'}
+      actions={<>
+        <button className="btn btn-ghost" onClick={onClose}>CANCEL</button>
+        <button className="btn btn-accent" onClick={() => { onApply(sel); onClose(); }}>적용</button>
+      </>}>
+      <div style={{ display: 'grid', gap: 9 }}>
+        <KInput placeholder="닉네임·아이디 검색" value={q} onChange={e => setQ(e.target.value)} />
+        <div style={{ maxHeight: 240, overflow: 'auto', display: 'grid', gap: 4, alignContent: 'start' }}>
+          {list.map(p => (
+            <KCheck key={p.id}
+              label={<span style={{ fontSize: 12.5 }}>{p.nickname} <small style={{ color: 'var(--faint)' }}>{p.id}</small></span>}
+              checked={sel.includes(p.id)}
+              onChange={v => setSel(s => (v ? [...s, p.id] : s.filter(x => x !== p.id)))} />
+          ))}
+          {list.length === 0 && (
+            <p className="hint" style={{ margin: 0 }}>
+              {pool.length === 0 ? '가입한 회원이 없습니다' : '검색과 일치하는 회원이 없습니다'}
+            </p>
+          )}
+        </div>
+        {/* 탈퇴 등으로 목록에 없는 선택이 남아 있으면 알려 준다 — 몰래 남아 계속 잠그는 일이 없게 */}
+        {sel.some(id => !pool.some(p => p.id === id)) && (
+          <p className="hint" style={{ margin: 0 }}>
+            회원 목록에 없는 선택 {sel.filter(id => !pool.some(p => p.id === id)).length}건이 있습니다 — 적용하면 그대로 유지됩니다
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 /** 메뉴 관리 탭 (5.2 — 메뉴 선택제) — 노출·순서·이름 + 메뉴별 부속 설정 */
 function MenuPane() {
   const [ms, patch, msLoaded] = useMenuSettings();
@@ -1926,6 +1970,8 @@ function MenuPane() {
   // 「주소로는 열람 허용」을 켤 때 띄우는 확인 (v2.0 사용자 요청)
   const [openAsk, setOpenAsk] = useState<(() => void) | null>(null);
   const [visAsk, setVisAsk] = useState(false);
+  // 멤버 선택 모달 (v2.0 사용자 요청) — 「비로그인 숨김」·갤러리 글쓰기를 특정 회원으로 좁힌다
+  const [memAsk, setMemAsk] = useState<{ ids: string[]; apply: (ids: string[]) => void; desc?: string } | null>(null);
   const [commSet, patchComm] = useCommSettings();
   const { boards, loaded: bLoaded, patchBoard } = useBoards();  // 추가 게시판 이름·자동 편입 동기화 + 권한
   const toast = useToast();
@@ -2188,7 +2234,44 @@ function MenuPane() {
         </>
       );
     }
-
+    // 갤러리 글쓰기 권한 (v2.0 사용자 요청) — 갤러리(섹션)마다 · 「글쓰기 멤버」로 특정 회원까지
+    if (href === '/gallery' || href.startsWith('/gallery?s=')) {
+      const key = href === '/gallery' ? MAIN_SEC : href.slice('/gallery?s='.length);
+      // 메뉴 주소에는 별명(slug)이 적혀 있을 수 있다 — id로 통일해 저장
+      const gsec = sectionsOf(secMap, 'gallery').find(s2 => s2.id === key || s2.slug === key);
+      if (!gsec) return null;
+      const gw = ms.galWrite?.[gsec.id] ?? 'member';
+      const gwIds = ms.galWriteMembers?.[gsec.id];
+      return (
+        <>
+          {gw === 'member' && (
+            <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 10.5 }}
+              onClick={() => setMemAsk({
+                ids: gwIds ?? [],
+                desc: '체크한 회원(그리고 관리자)만 이 갤러리에 글을 쓸 수 있습니다 — 비우면 로그인한 모든 회원',
+                apply: n => {
+                  const next = { ...ms.galWriteMembers };
+                  if (n.length) next[gsec.id] = n; else delete next[gsec.id];
+                  patch({ galWriteMembers: next });
+                },
+              })}>
+              {gwIds?.length ? `글쓰기 멤버 ${gwIds.length}명` : '글쓰기 멤버'}
+            </button>
+          )}
+          <KSelect minWidth={110} value={gw}
+            onChange={v => {
+              // 관리자 전용으로 바꾸면 멤버 선택은 함께 지운다 — 몰래 남아 있지 않게 (노출 제한과 같은 규칙)
+              const next = { ...ms.galWriteMembers };
+              if (v !== 'member') delete next[gsec.id];
+              patch({ galWrite: { ...ms.galWrite, [gsec.id]: v as MenuPerm }, galWriteMembers: next });
+            }}
+            options={[
+              { value: 'member', label: '글쓰기: 가입자' },
+              { value: 'admin', label: '글쓰기: 관리자' },
+            ]} />
+        </>
+      );
+    }
     return null;
   };
   /* 「주소로는 열람 허용」 (v2.0 사용자 요청) — 메뉴·위젯에서는 감추되 들어오는 것만 열어 준다.
@@ -2209,6 +2292,17 @@ function MenuPane() {
         { value: 'member', label: '비로그인 숨김' },
         { value: 'admin', label: '관리자만' },
       ]} />
+  );
+
+  /* 멤버 선택 (v2.0 사용자 요청) — 「비로그인 숨김」일 때만 뜨는 버튼.
+     검색 모달에서 고른 회원(+관리자)에게만 보이고 들어갈 수 있다 — 비우면 로그인한 모든 회원 */
+  const memberBtn = (v: MenuVis | undefined, ids: string[] | undefined, apply: (ids: string[] | undefined) => void) => (
+    v !== 'member' ? null : (
+      <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 10.5 }}
+        onClick={() => setMemAsk({ ids: ids ?? [], apply: n => apply(n.length ? n : undefined) })}>
+        {ids?.length ? `멤버 ${ids.length}명` : '멤버 선택'}
+      </button>
+    )
   );
   return (
     <div className="set-sec">
@@ -2237,6 +2331,8 @@ function MenuPane() {
           <div className="d">
             공개범위는 메뉴 노출을 정합니다(전부 보임 / 비로그인 숨김 / 관리자만) — SAVE를 눌러야 반영 · 글쓰기·댓글 권한은 즉시 반영
             <br />
+            「비로그인 숨김」 옆 <b>멤버 선택</b>으로 특정 회원에게만 보이게 좁힐 수 있습니다 — 비우면 로그인한 모든 회원
+            <br />
             <b>주소로는 열람 허용</b>을 켜면 메뉴에서는 계속 감춰 두고 <b>주소를 아는 사람만 들어올 수 있는</b> 메뉴가 됩니다 — 링크로 돌릴 게시판에 씁니다
           </div>
           {tree.map(g => (
@@ -2247,7 +2343,12 @@ function MenuPane() {
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   {g.href && extraPerm(g.href)}
                   {openChk(g.vis, g.open, nv => patchGroup(g.id, { open: nv || undefined }))}
-                  {visSel(g.vis, nv => patchGroup(g.id, { vis: nv === 'all' ? undefined : nv, ...(nv === 'all' ? { open: undefined } : {}) }))}
+                  {memberBtn(g.vis, g.visMembers, ids => patchGroup(g.id, { visMembers: ids }))}
+                  {visSel(g.vis, nv => patchGroup(g.id, {
+                    vis: nv === 'all' ? undefined : nv,
+                    ...(nv === 'all' ? { open: undefined } : {}),
+                    ...(nv !== 'member' ? { visMembers: undefined } : {}),
+                  }))}
                 </div>
               </div>
               {!g.href && g.items.map(it => (
@@ -2259,9 +2360,16 @@ function MenuPane() {
                     {openChk(it.vis, it.open, nv => patchGroup(g.id, {
                       items: g.items.map(x => (x.href === it.href ? { ...x, open: nv || undefined } : x)),
                     }))}
+                    {memberBtn(it.vis, it.visMembers, ids => patchGroup(g.id, {
+                      items: g.items.map(x => (x.href === it.href ? { ...x, visMembers: ids } : x)),
+                    }))}
                     {visSel(it.vis, nv => patchGroup(g.id, {
                       items: g.items.map(x => (x.href === it.href
-                        ? { ...x, vis: nv === 'all' ? undefined : nv, ...(nv === 'all' ? { open: undefined } : {}) } : x)),
+                        ? {
+                          ...x, vis: nv === 'all' ? undefined : nv,
+                          ...(nv === 'all' ? { open: undefined } : {}),
+                          ...(nv !== 'member' ? { visMembers: undefined } : {}),
+                        } : x)),
                     }))}
                   </div>
                 </div>
@@ -2287,6 +2395,12 @@ function MenuPane() {
               </button>
             </div>
           </div>
+          {/* 멤버 선택 (v2.0 사용자 요청) — 검색으로 골라 그 회원(+관리자)에게만 */}
+          {memAsk && (
+            <MemberPickModal initial={memAsk.ids} onApply={memAsk.apply} desc={memAsk.desc}
+              onClose={() => setMemAsk(null)} />
+          )}
+
           {/* 「주소로는 열람 허용」 확인 (v2.0 사용자 요청) — 켜는 순간 무엇이 열리는지 분명히 */}
           <ConfirmModal open={!!openAsk} title="주소가 있는 모두에게 공개됩니다"
             body={'메뉴에서는 계속 감춰지지만, 이 주소를 아는 사람은 로그인하지 않아도 들어와 볼 수 있습니다. 링크를 받은 사람이 다른 곳에 옮겨 적으면 그 사람들도 볼 수 있습니다. 정말 알려지면 안 되는 내용에는 쓰지 마세요.'}

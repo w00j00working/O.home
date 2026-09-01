@@ -249,7 +249,9 @@ function CharDetailInner() {
               이름 길이에 따라 어중간해져서, 정한 크기를 그대로 쓴다 (v2.0 사용자 확정) */}
           <div style={{
             fontFamily: familyOf(eff.fontId) ?? 'var(--serif)', fontSize: eff.nameSize ?? 38,
-            fontWeight: 600, letterSpacing: '.2em', lineHeight: 1.1,
+            // 굵기는 끌 수 있다 (v2.0 사용자 요청 — 폰트에 따라 볼드가 안 어울린다). 기본은 지금처럼 굵게
+            fontWeight: (eff.nameBold ?? true) ? 600 : 400,
+            letterSpacing: '.2em', lineHeight: 1.1,
           }}>{eff.name}</div>
           <div className="sub" style={{ marginBottom: 14 }}>{eff.sub}</div>
 

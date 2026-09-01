@@ -53,6 +53,8 @@ export interface Character {
   /** 상세 페이지 큰 이름의 글씨 크기 px (v2.0) — 기본 38.
    *  이름 길이가 제각각이라 자동으로 줄이면 어중간해진다. 캐릭터마다 직접 정한다. */
   nameSize?: number;
+  /** 상세 큰 이름 굵게 (v2.0 사용자 요청) — 기본 켜짐. 폰트에 따라 볼드가 안 어울릴 때 끈다 */
+  nameBold?: boolean;
   bodyFontId?: string;   // 본문 폰트 — 프로필 정보·소개 텍스트
   own: boolean;          // true = 운영자 자캐 (리스트 노출), false = 상대 캐릭터
   // 회원-캐릭터 연결 (3차, v1.9) — 상대 캐릭터에 회원 권한 부여:
@@ -82,6 +84,7 @@ export interface AuCharProfile {
   artCrop?: import("@/components/ui/CropEditor").CropValue;   // 상세 중앙 아트 위치 (v2.0)
   fontId?: string;
   nameSize?: number;     // 상세 큰 이름 크기 px (v2.0)
+  nameBold?: boolean;    // 상세 큰 이름 굵게 (v2.0 사용자 요청 — 폰트에 따라 볼드가 안 어울린다)
   bodyFontId?: string;
 }
 
@@ -110,6 +113,9 @@ export function charWithAu(c: Character, auKey?: string | null): Character {
     thumbCrop: p.thumbCrop,
     ...(p.fontId !== undefined ? { fontId: p.fontId } : {}),
     ...(p.bodyFontId !== undefined ? { bodyFontId: p.bodyFontId } : {}),
+    // nameSize는 여태 병합에 빠져 있었다 — AU에 저장은 되는데 표시가 base 크기를 따랐다 (v2.0 수정)
+    ...(p.nameSize !== undefined ? { nameSize: p.nameSize } : {}),
+    ...(p.nameBold !== undefined ? { nameBold: p.nameBold } : {}),
   };
 }
 
@@ -144,6 +150,8 @@ export interface RelMember {
   /** 멤버 카드 얼굴칸(1:1) 크롭 (v2.0) — 캐릭터의 리스트 썸네일은 3:4라
    *  정사각 칸에 그대로 쓰면 어긋난다. 자관에서 따로 잡아 저장한다. */
   faceCrop?: import('@/components/ui/CropEditor').CropValue;
+  /** 멤버 카드 이름 굵게 (v2.0 사용자 요청) — 기본 켜짐 */
+  nameBold?: boolean;
   /** 멤버 카드 이름 크기 px (v2.0) — 기본 17. 카드 폭이 좁아 이름마다 알맞은 크기가 다르다 */
   nameSize?: number;
   quoteColor?: string;           // 히어로 대사 글씨색 (페어, v1.9 — 기본 #d7dae0)
@@ -219,6 +227,7 @@ export interface RelAuMember {
   fullOffX?: number;
   fullOffY?: number;
   nameSize?: number;
+  nameBold?: boolean;
   quoteColor?: string;
   quoteMarkColor?: string;
   /** 멤버 카드 얼굴칸 위치 — AU마다 따로 (v2.0 사용자 제보 — 원본에서 바꾸면 AU도 같이 바뀌었다).

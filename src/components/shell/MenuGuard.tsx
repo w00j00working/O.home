@@ -13,7 +13,7 @@
 import React, { Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { useMenuSettings, hrefAccess } from '@/lib/menuStore';
+import { useMenuSettings, hrefAccess, canAccessHref } from '@/lib/menuStore';
 import { PageTitle } from '@/components/ui/PageText';
 
 function GuardInner({ children }: { children: React.ReactNode }) {
@@ -32,23 +32,26 @@ function GuardInner({ children }: { children: React.ReactNode }) {
   // 먼저 그려 두면 한 프레임이라도 내용이 비치고, 반대로 관리자에게 「비공개」가 번쩍인다
   if (!loaded || !ready) return <section className="page" />;
 
-  const vis = hrefAccess(menuSet, path);
-  const ok = vis === 'all' || (vis === 'member' && !!user) || (vis === 'admin' && isAdmin);
+  // 멤버 선택(visMembers)까지 판정에 들어가므로 공용 함수로 (v2.0)
+  const ok = canAccessHref(menuSet, path, { loggedIn: !!user, isAdmin, id: user?.id });
   if (ok) return <>{children}</>;
 
+  const vis = hrefAccess(menuSet, path);
   return (
     <section className="page">
       <div className="page-head">
         <PageTitle>PRIVATE</PageTitle>
-        <p>
-          {vis === 'admin'
-            ? '관리자만 볼 수 있는 곳입니다'
-            : '로그인한 회원만 볼 수 있는 곳입니다'}
-        </p>
+        {/* 로그인했는데 막혔으면 멤버 선택에서 빠진 것 — 로그인하라는 안내는 어리둥절하다 */}
+        <p>{blockedMsg(vis === 'admin' ? 'admin' : 'member', !!user)}</p>
       </div>
     </section>
   );
 }
+
+const blockedMsg = (vis: 'member' | 'admin', loggedIn: boolean) =>
+  vis === 'admin' ? '관리자만 볼 수 있는 곳입니다'
+    : loggedIn ? '허용된 회원만 볼 수 있는 곳입니다'
+      : '로그인한 회원만 볼 수 있는 곳입니다';
 
 export function MenuGuard({ children }: { children: React.ReactNode }) {
   // useSearchParams는 Suspense 경계 필요 (Next App Router)
@@ -56,12 +59,12 @@ export function MenuGuard({ children }: { children: React.ReactNode }) {
 }
 
 /** 못 들어가는 곳에 보여 줄 화면 — 위의 MenuGuard와 같은 문구를 쓴다 */
-function blockedView(vis: 'member' | 'admin') {
+function blockedView(vis: 'member' | 'admin', loggedIn: boolean) {
   return (
     <section className="page">
       <div className="page-head">
         <PageTitle>PRIVATE</PageTitle>
-        <p>{vis === 'admin' ? '관리자만 볼 수 있는 곳입니다' : '로그인한 회원만 볼 수 있는 곳입니다'}</p>
+        <p>{blockedMsg(vis, loggedIn)}</p>
       </div>
     </section>
   );
@@ -80,7 +83,7 @@ export function useHrefBlock(href?: string): React.ReactElement | null {
   const { user, isAdmin, ready } = useAuth();
   const [menuSet, , loaded] = useMenuSettings();
   if (!href || !loaded || !ready) return null;
+  if (canAccessHref(menuSet, href, { loggedIn: !!user, isAdmin, id: user?.id })) return null;
   const vis = hrefAccess(menuSet, href);
-  if (vis === 'all' || (vis === 'member' && !!user) || (vis === 'admin' && isAdmin)) return null;
-  return blockedView(vis);
+  return blockedView(vis === 'admin' ? 'admin' : 'member', !!user);
 }

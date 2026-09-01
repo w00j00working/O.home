@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import { CommItem, CommSettings, SlotMode, SlotShape, SLOT_CHARS, badgeStyle, CommFormField, CommFormFieldType } from '@/lib/commStore';
 import { newId } from '@/lib/postStore';
-import { useFonts } from '@/lib/fontStore';
+import { useFonts, deVarFamily } from '@/lib/fontStore';
 import { putBlob, useBlobUrl } from '@/lib/blobStore';
 import { KInput, KSelect, KStep, KCheck } from '@/components/ui/Kit';
 import { ColorField } from '@/components/ui/ColorField';
@@ -314,10 +314,10 @@ export function CommForm({ initial, settings, onSave, onCancel }: {
           <h4>폰트 · 테마</h4>
           <div style={{ display: 'grid', gap: 9 }}>
             <KSelect value={titleFontId} onChange={setTitleFontId}
-              options={fonts.map(f => ({ value: f.id, label: <span style={{ fontFamily: f.family }}>{f.name}</span> }))} />
+              options={fonts.map(f => ({ value: f.id, label: <span style={{ fontFamily: deVarFamily(f.family) }}>{f.name}</span> }))} />
             <p className="hint" style={{ margin: 0 }}>타이틀 폰트 — 상세 대형 타이틀</p>
             <KSelect value={bodyFontId} onChange={setBodyFontId}
-              options={fonts.map(f => ({ value: f.id, label: <span style={{ fontFamily: f.family }}>{f.name}</span> }))} />
+              options={fonts.map(f => ({ value: f.id, label: <span style={{ fontFamily: deVarFamily(f.family) }}>{f.name}</span> }))} />
             <p className="hint" style={{ margin: 0 }}>본문 폰트 — 설명 텍스트</p>
             <div className="mini-seg">
               <button className={themeMode === 'site' ? 'on' : ''} onClick={() => setThemeMode('site')}>홈페이지 테마 그대로</button>

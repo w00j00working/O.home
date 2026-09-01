@@ -12,10 +12,14 @@ export type MenuPerm = 'guest' | 'member' | 'admin';
 /** 메뉴 공개범위 (v1.9) — all: 전부 보임 / member: 비로그인에게 숨김 / admin: 관리자에게만 */
 export type MenuVis = 'all' | 'member' | 'admin';
 
-/** 트리의 하위 메뉴 한 항목 — label 없으면 기본 이름(FEATURES/게시판명) · pageTitle은 페이지 상단 큰 제목 덮어쓰기 */
-export interface MenuLeaf { href: string; label?: string; pageTitle?: string; vis?: MenuVis; open?: boolean }
+/** 트리의 하위 메뉴 한 항목 — label 없으면 기본 이름(FEATURES/게시판명) · pageTitle은 페이지 상단 큰 제목 덮어쓰기
+ *  visMembers (v2.0 사용자 요청): 「비로그인 숨김」일 때 **이 회원들에게만** 보이게 좁힌다 — 비우면 로그인한 모든 회원 */
+export interface MenuLeaf { href: string; label?: string; pageTitle?: string; vis?: MenuVis; open?: boolean; visMembers?: string[] }
 /** 트리의 상위 한 항목 — href가 있으면 단독 메뉴(하위 없음) */
-export interface MenuGroupNode { id: string; label: string; href?: string; items: MenuLeaf[]; pageTitle?: string; vis?: MenuVis; open?: boolean }
+export interface MenuGroupNode { id: string; label: string; href?: string; items: MenuLeaf[]; pageTitle?: string; vis?: MenuVis; open?: boolean; visMembers?: string[] }
+
+/** 공개범위 판정에 쓰는 방문자 — id는 「멤버 선택」 판정용 (v2.0) */
+export interface MenuViewer { loggedIn: boolean; isAdmin: boolean; id?: string }
 
 export interface MenuSettings {
   tree?: MenuGroupNode[];            // 자유 메뉴 트리 (v1.9 — 없으면 v1 설정에서 마이그레이션)
@@ -30,6 +34,10 @@ export interface MenuSettings {
   roadUpload: MenuPerm;              // 로드뷰 업로드 권한 (4.10 v1.7)
   roadComment: MenuPerm;             // 로드뷰 댓글 권한
   backupView: 'gal' | 'list';        // 갤러리(그림백업) 기본 보기 (5.2)
+  /** 갤러리 글쓰기 권한 (v2.0 사용자 요청) — 섹션 id별 · 미지정은 'member'(로그인한 모든 회원) */
+  galWrite?: Record<string, MenuPerm>;
+  /** 갤러리 글쓰기를 특정 회원으로 좁히기 (v2.0) — 'member'일 때만 의미 · 비우면 모든 회원 */
+  galWriteMembers?: Record<string, string[]>;
   calTitle: 'en' | 'num';            // 스케줄러 달 표기 (v1.9) — AUGUST 2026 / 2026.08
   imgProtect: ImgProtectArea[];      // 이미지 저장 방지 영역 (v1.9 — 우클릭·드래그 차단, 관리자 제외)
 }
@@ -235,25 +243,27 @@ export function menuLabelFor(href: string, extra?: ExtraEntry[]): string | null 
  */
 const VIS_RANK: Record<MenuVis, number> = { all: 0, member: 1, admin: 2 };
 
-/** 이 주소에 걸린 메뉴 항목의 공개범위 + 「주소로는 열람 허용」 여부 (v2.0) */
-function hrefEntry(s: MenuSettings, path: string): { vis: MenuVis; open: boolean } {
+/** 이 주소에 걸린 메뉴 항목의 공개범위 + 「주소로는 열람 허용」 + 멤버 선택 목록 (v2.0) */
+function hrefEntry(s: MenuSettings, path: string): { vis: MenuVis; open: boolean; members?: string[] } {
   const covers = (href: string) =>
     path === href || path.startsWith(`${href}/`) || path.startsWith(`${href}?`);
   let bestLen = -1;
-  let best: { vis: MenuVis; open: boolean } = { vis: 'all', open: false };
-  const take = (href: string, e: { vis: MenuVis; open: boolean }) => {
+  let best: { vis: MenuVis; open: boolean; members?: string[] } = { vis: 'all', open: false };
+  const take = (href: string, e: { vis: MenuVis; open: boolean; members?: string[] }) => {
     if (href.length > bestLen) { bestLen = href.length; best = e; }
     else if (href.length === bestLen && VIS_RANK[e.vis] < VIS_RANK[best.vis]) best = e;
   };
   for (const g of s.tree ?? defaultTree()) {
     const gv = g.vis ?? 'all';
-    if (g.href && covers(g.href)) take(g.href, { vis: gv, open: !!g.open });
+    if (g.href && covers(g.href)) take(g.href, { vis: gv, open: !!g.open, members: g.visMembers });
     // 상위가 더 좁으면 하위는 그 뒤에 숨는다 — 상위가 안 보이면 하위도 안 보이므로
     for (const it of g.items) {
       if (!covers(it.href)) continue;
       const iv = it.vis ?? 'all';
       const narrower = VIS_RANK[gv] >= VIS_RANK[iv];
-      take(it.href, { vis: narrower ? gv : iv, open: narrower ? !!g.open : !!it.open });
+      take(it.href, narrower
+        ? { vis: gv, open: !!g.open, members: g.visMembers }
+        : { vis: iv, open: !!it.open, members: it.visMembers });
     }
   }
   return best;
@@ -276,22 +286,40 @@ export function hrefAccess(s: MenuSettings, path: string): MenuVis {
   return e.open ? 'all' : e.vis;
 }
 
-const allows = (v: MenuVis, viewer: { loggedIn: boolean; isAdmin: boolean }) =>
-  v === 'all' || (v === 'member' && viewer.loggedIn) || (v === 'admin' && viewer.isAdmin);
+/* 「비로그인 숨김」에 멤버를 골라 뒀으면(visMembers) 그 회원(+관리자)에게만 (v2.0 사용자 요청).
+   비어 있으면 지금까지처럼 로그인한 모든 회원 — 관리자는 목록과 무관하게 항상 통과 */
+const allows = (v: MenuVis, viewer: MenuViewer, members?: string[]) =>
+  v === 'all'
+  || (v === 'member' && viewer.loggedIn
+    && (!members?.length || viewer.isAdmin || (!!viewer.id && members.includes(viewer.id))))
+  || (v === 'admin' && viewer.isAdmin);
+
+/** 갤러리 글쓰기 권한 (v2.0 사용자 요청) — 섹션별. 미지정은 로그인한 모든 회원,
+ *  「멤버 선택」으로 좁혔으면 그 회원(+관리자)만. WRITE 버튼과 작성 페이지가 같이 쓴다 */
+export function canGalleryWrite(s: MenuSettings, secId: string, viewer: MenuViewer): boolean {
+  if (!viewer.loggedIn) return false;
+  if (viewer.isAdmin) return true;
+  if ((s.galWrite?.[secId] ?? 'member') === 'admin') return false;
+  const members = s.galWriteMembers?.[secId];
+  return !members?.length || (!!viewer.id && members.includes(viewer.id));
+}
 
 /** 이 방문자에게 **드러내도 되는가** (v2.0) — 메뉴·위젯이 쓴다.
  *  「주소로는 열람 허용」이어도 여기서는 감춘다 — 링크로만 돌리려는 것이지 알리려는 게 아니다 */
 export function canViewHref(
-  s: MenuSettings, path: string, viewer: { loggedIn: boolean; isAdmin: boolean },
+  s: MenuSettings, path: string, viewer: MenuViewer,
 ): boolean {
-  return allows(hrefVis(s, path), viewer);
+  const e = hrefEntry(s, path);
+  return allows(e.vis, viewer, e.members);
 }
 
 /** 이 방문자가 **들어갈 수 있는가** (v2.0) — 페이지 차단·서버 저장값이 쓴다 */
 export function canAccessHref(
-  s: MenuSettings, path: string, viewer: { loggedIn: boolean; isAdmin: boolean },
+  s: MenuSettings, path: string, viewer: MenuViewer,
 ): boolean {
-  return allows(hrefAccess(s, path), viewer);
+  const e = hrefEntry(s, path);
+  if (e.open) return true;   // 주소로는 열람 허용 — 주소를 아는 사람 누구나
+  return allows(e.vis, viewer, e.members);
 }
 
 /** 메뉴 트리에 적힌 이 주소의 이름 (v2.0) — 이름을 따로 준 적이 없으면 null */
@@ -309,23 +337,21 @@ export function menuLabelOf(s: MenuSettings, href: string): string | null {
 export function buildMenu(
   s: MenuSettings,
   extra?: ExtraEntry[],
-  viewer?: { loggedIn: boolean; isAdmin: boolean },
+  viewer?: MenuViewer,
 ): MenuItem[] {
   const tree = s.tree ?? defaultTree();
   const placed = new Set(tree.flatMap(g => (g.href ? [g.href] : g.items.map(it => it.href))));
-  const canSee = (vis?: MenuVis) => !viewer
-    || (vis ?? 'all') === 'all'
-    || (vis === 'member' && viewer.loggedIn)
-    || (vis === 'admin' && viewer.isAdmin);
+  const canSee = (vis?: MenuVis, members?: string[]) =>
+    !viewer || allows(vis ?? 'all', viewer, members);
 
   const menu: MenuItem[] = tree
-    .filter(g => canSee(g.vis))
+    .filter(g => canSee(g.vis, g.visMembers))
     .map((g): MenuItem | null => {
       if (g.href) {
         return menuLabelFor(g.href, extra) === null ? null : { label: g.label, href: g.href };
       }
       const children = g.items
-        .filter(it => canSee(it.vis))
+        .filter(it => canSee(it.vis, it.visMembers))
         .map(it => {
           const def = menuLabelFor(it.href, extra);
           return def === null ? null : { href: it.href, label: it.label ?? def };
