@@ -59,7 +59,10 @@ export default function MyPage() {
       const r = await promoteToStorage(avatarRef);
       if (!alive) return;
       if (r.kind === 'uploaded') {
-        const up = await updateProfile({ avatarUrl: r.url });
+        const up = await updateProfile({
+  nickname: user.nickname,
+  avatarUrl: r.url
+});
         if (!alive) return;
         setAvNote(up.ok ? '' : `저장소에는 올렸지만 프로필에 반영하지 못했습니다 — ${up.error}`);
       } else if (r.kind === 'no-origin') {
@@ -103,7 +106,10 @@ export default function MyPage() {
       toast(`이미지를 저장소에 올리지 못했습니다 — ${e instanceof Error ? e.message : String(e)}`);
       return;
     }
-    const r = await updateProfile({ avatarUrl: id });
+    const r = await updateProfile({
+  nickname: user.nickname,
+  avatarUrl: id
+});
     setAvOpen(false);
     toast(r.ok ? '프로필 이미지가 변경되었습니다' : r.error!);
   };
