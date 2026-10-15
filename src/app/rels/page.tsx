@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useLocalList } from '@/lib/postStore';
-import { Relation, REL_SEED, Character, CHAR_SEED, relPath } from '@/lib/charStore';
+import { Relation, REL_SEED, relDday, relPath } from '@/lib/charStore';
 import { SearchBar } from '@/components/ui/Kit';
 import { useToast } from '@/components/ui/Toast';
 import { CroppedBlobImg } from '@/components/ui/CropEditor';
@@ -19,10 +19,8 @@ export default function RelsPage() {
   const toast = useToast();
   const { editOn } = useMainStore();
   const [rels, setRels] = useLocalList<Relation>('ohome.rels.v1', REL_SEED);
-  const [chars] = useLocalList<Character>('ohome.chars.v1', CHAR_SEED);
   const [q, setQ] = useState('');
 
-  const colorOf = (id: string) => chars.find(c => c.id === id)?.color ?? '#666';
   const visible = rels
     .filter(r => isAdmin || r.visibility !== 'private')
     .filter(r => !q || r.name.toLowerCase().includes(q.toLowerCase()));
@@ -44,6 +42,15 @@ export default function RelsPage() {
         {visible.map((r, i) => {
           const memberLocked = r.visibility === 'member' && !user;
           const priv = r.visibility === 'private';
+          const dday = relDday(r.ddayDate);
+          const safeLink = (value?: string) => {
+            const url = value?.trim();
+            if (!url) return undefined;
+            if (/^https?:\/\//i.test(url) || /^\/(?!\/)/.test(url) || url.startsWith('#') || url.startsWith('?')) return url;
+            return undefined;
+          };
+          const logUrl = safeLink(r.logUrl);
+          const lorebookUrl = safeLink(r.lorebookUrl);
           const sp = sort(i) as { style?: React.CSSProperties };
           return (
             <div key={r.id} className="rel-card" {...sort(i)}
@@ -54,7 +61,7 @@ export default function RelsPage() {
                 router.push(relPath(r));
               }}>
               <div className="thumb" style={{ position: 'relative' }}>
-                <CroppedBlobImg fileRef={r.thumbId} crop={r.thumbCrop} ph={r.thumbClass}
+                <CroppedBlobImg fileRef={r.thumbId || r.arts?.[0]} crop={r.thumbCrop} ph={r.thumbClass}
                   label={priv ? '나만보기' : memberLocked ? '멤버공개' : '4:3'} />
               </div>
               <div className="nm">
@@ -62,15 +69,18 @@ export default function RelsPage() {
                 <b>
                   {r.name}
                   {r.visibility === 'member' && <span className="pill" style={{ marginLeft: 6 }}>멤버</span>}
+                  {/* 디데이는 자관명 옆에 표시 (v2.0 사용자 요청) */}
+                  {dday && <span className="rel-dday" style={{ marginLeft: 6 }}>{dday}</span>}
                 </b>
-                <span>
-                  {priv ? '관리자에게만 표시됨'
-                    : memberLocked ? '로그인 시 열람 가능'
-                    : `${r.catchphrase.replace(/ /g, '')} · ${r.members.length}인`}
-                </span>
-                {r.members.length > 0 && (
-                  <div className="who">
-                    {r.members.map(m => <i key={m.charId} style={{ background: colorOf(m.charId) }} />)}
+                {(priv || memberLocked) && <span>
+                  {priv ? '관리자에게만 표시됨' : '로그인 시 열람 가능'}
+                </span>}
+                {(logUrl || lorebookUrl) && (
+                  <div className="rel-card-links">
+                    {logUrl && <a href={logUrl}
+                      onClick={e => e.stopPropagation()}>LOG</a>}
+                    {lorebookUrl && <a href={lorebookUrl}
+                      onClick={e => e.stopPropagation()}>LOREBOOK</a>}
                   </div>
                 )}
               </div>

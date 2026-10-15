@@ -14,7 +14,9 @@ import {
   ThreadWork, ThreadPost, THREAD_SEED, useThreadSettings, threadCats, catLabel, threadBadgeStyle, lastDate, fmtMD, fmtMDHM,
 } from '@/lib/threadStore';
 import { useFonts } from '@/lib/fontStore';
-import { putBlob, BlobImg, useBlobUrl } from '@/lib/blobStore';
+import { BlobImg, useBlobUrl } from '@/lib/blobStore';
+import { useImageSource, resolveImageRef, type ImageSource } from '@/components/ui/ImageSource';
+import { fileDrop } from '@/lib/dnd';
 import { CroppedBlobImg } from '@/components/ui/CropEditor';
 import { SearchBar, KTextarea, KInput, KSelect } from '@/components/ui/Kit';
 import { GuestIdBar } from '@/components/ui/GuestId';
@@ -132,32 +134,36 @@ function ThreadsPageInner() {
   const [text, setText] = useState('');
   const [foldType, setFoldType] = useState<FoldPick>('none');       // 접기 (v2.0 스포일러 쿠션)
   const [foldLabel, setFoldLabel] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
-  const [urls, setUrls] = useState<string[]>([]);
+  const [files, setFiles] = useState<ImageSource[]>([]);
+  const urls = useMemo(() => files.map(image => image.kind === 'url' ? image.url : URL.createObjectURL(image.file)), [files]);
+  useEffect(() => () => {
+    urls.forEach((url, i) => { if (files[i]?.kind === 'file') URL.revokeObjectURL(url); });
+  }, [files, urls]);
   const imgRef = useRef<HTMLInputElement>(null);
-  const addFiles = (list: FileList | null) => {
-    if (!list) return;
-    const next = [...files, ...Array.from(list)].slice(0, 4); // 이미지 4장 제한 (4.17)
+  const addImages = (list: ImageSource[]) => {
+    const next = [...files, ...list].slice(0, 4); // 이미지 4장 제한 (4.17)
     if (files.length + list.length > 4) toast('이미지는 최대 4장까지 첨부할 수 있습니다');
     setFiles(next);
-    setUrls(next.map(f => URL.createObjectURL(f)));
   };
+  const addFiles = (list: FileList | null) => {
+    if (list) addImages(Array.from(list).map(file => ({ kind: 'file', file })));
+  };
+  const imageSource = useImageSource(url => addImages([{ kind: 'url', url }]));
   const removeFile = (i: number) => {
     const next = files.filter((_, x) => x !== i);
     setFiles(next);
-    setUrls(next.map(f => URL.createObjectURL(f)));
   };
   const post = async () => {
     if (!sel) return;
     if (!text.trim() && files.length === 0) { toast('내용을 입력해 주세요'); return; }
     const images: string[] = [];
-    for (const f of files) images.push(await putBlob(f));
+    for (const f of files) images.push(await resolveImageRef(f));
     const p: ThreadPost = {
       id: newId(), text: text.trim(), images, date: new Date().toISOString(),
       fold: foldType === 'none' ? undefined : { type: foldType, label: foldType === 'custom' ? foldLabel.trim() || undefined : undefined },
     };
     setWorks(works.map(w => w.id === sel.id ? { ...w, posts: [...w.posts, p] } : w));
-    setText(''); setFiles([]); setUrls([]); setFoldType('none'); setFoldLabel('');
+    setText(''); setFiles([]); setFoldType('none'); setFoldLabel('');
   };
 
   // 글 수정 모달 — 텍스트 + 첨부 이미지 관리 (총 4장 제한)
@@ -167,29 +173,34 @@ function ThreadsPageInner() {
   const [epFoldLabel, setEpFoldLabel] = useState('');
   const [epKeep, setEpKeep] = useState<string[]>([]);   // 유지할 기존 이미지 id
   const [epPh, setEpPh] = useState<string[]>([]);       // 유지할 데모 플레이스홀더 (시드)
-  const [epFiles, setEpFiles] = useState<File[]>([]);
-  const [epUrls, setEpUrls] = useState<string[]>([]);
+  const [epFiles, setEpFiles] = useState<ImageSource[]>([]);
+  const epUrls = useMemo(() => epFiles.map(image => image.kind === 'url' ? image.url : URL.createObjectURL(image.file)), [epFiles]);
+  useEffect(() => () => {
+    epUrls.forEach((url, i) => { if (epFiles[i]?.kind === 'file') URL.revokeObjectURL(url); });
+  }, [epFiles, epUrls]);
   const epImgRef = useRef<HTMLInputElement>(null);
   const epCount = epKeep.length + epPh.length + epFiles.length;
   const openEdit = (p: ThreadPost) => {
     setEpId(p.id); setEpText(p.text);
     setEpFoldType(p.fold?.type ?? 'none'); setEpFoldLabel(p.fold?.label ?? '');
     setEpKeep(p.images); setEpPh(p.images.length ? [] : (p.phList ?? []));
-    setEpFiles([]); setEpUrls([]);
+    setEpFiles([]);
   };
-  const epAddFiles = (list: FileList | null) => {
-    if (!list) return;
+  const epAddImages = (list: ImageSource[]) => {
     const room = 4 - epKeep.length - epPh.length;
-    const next = [...epFiles, ...Array.from(list)].slice(0, Math.max(0, room));
+    const next = [...epFiles, ...list].slice(0, Math.max(0, room));
     if (epFiles.length + list.length > room) toast('이미지는 최대 4장까지 첨부할 수 있습니다');
     setEpFiles(next);
-    setEpUrls(next.map(f => URL.createObjectURL(f)));
   };
+  const epAddFiles = (list: FileList | null) => {
+    if (list) epAddImages(Array.from(list).map(file => ({ kind: 'file', file })));
+  };
+  const editImageSource = useImageSource(url => epAddImages([{ kind: 'url', url }]));
   const saveEdit = async () => {
     if (!sel || !epId) return;
     if (!epText.trim() && epCount === 0) { toast('내용을 입력해 주세요'); return; }
     const added: string[] = [];
-    for (const f of epFiles) added.push(await putBlob(f));
+    for (const f of epFiles) added.push(await resolveImageRef(f));
     setWorks(works.map(w => w.id === sel.id ? {
       ...w,
       posts: w.posts.map(p => p.id === epId ? {
@@ -389,7 +400,7 @@ function ThreadsPageInner() {
                 </div>
                 {/* 이어쓰기 컴포저 (트위터식, 관리자) */}
                 {isAdmin && (
-                  <div className="thr-write">
+                  <div className="thr-write" tabIndex={0} {...fileDrop(addFiles)} {...imageSource.handlers}>
                     <textarea placeholder="타래 이어쓰기…" value={text} onChange={e => setText(e.target.value)} />
                     {urls.length > 0 && (
                       <div className="thr-att">
@@ -409,6 +420,7 @@ function ThreadsPageInner() {
                         <button className="icobtn" data-tip="사진 추가 (최대 4장)" onClick={() => imgRef.current?.click()}>
                           <PhotoIcon />
                         </button>
+                        <button type="button" className="btn btn-ghost" onClick={() => imageSource.open()}>🔗 이미지 주소 붙여넣기</button>
                         {/* 접기 (v2.0 스포일러 쿠션) — 게시판 글쓰기의 접기와 같은 선택지 */}
                         <KSelect minWidth={122} value={foldType} onChange={v => setFoldType(v as FoldPick)} options={FOLD_OPTIONS} />
                         {foldType === 'custom' && (
@@ -484,7 +496,7 @@ function ThreadsPageInner() {
           <button className="btn btn-ghost" onClick={() => setEpId(null)}>CANCEL</button>
           <button className="btn btn-dark" onClick={saveEdit}>SAVE</button>
         </>}>
-        <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'grid', gap: 10 }} tabIndex={0} {...fileDrop(epAddFiles)} {...editImageSource.handlers}>
           <KTextarea style={{ minHeight: 120 }} value={epText} onChange={e => setEpText(e.target.value)} />
           {/* 접기 (v2.0 스포일러 쿠션) — 컴포저와 같은 선택지 */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -510,7 +522,6 @@ function ThreadsPageInner() {
                   <button onClick={() => {
                     const next = epFiles.filter((_, x) => x !== i);
                     setEpFiles(next);
-                    setEpUrls(next.map(f => URL.createObjectURL(f)));
                   }}>✕</button>
                 </div>
               ))}
@@ -522,9 +533,12 @@ function ThreadsPageInner() {
             <button className="icobtn" data-tip="사진 추가 (최대 4장)" onClick={() => epImgRef.current?.click()}>
               <PhotoIcon />
             </button>
+            <button type="button" className="btn btn-ghost" onClick={() => editImageSource.open()}>🔗 이미지 주소 붙여넣기</button>
           </div>
         </div>
       </Modal>
+      {imageSource.element}
+      {editImageSource.element}
       {/* 타래 우클릭 메뉴 (v2.0 사용자 요청) — 여기서 골라야 삭제 확인 모달이 뜬다.
           카드에 hover transform이 있어 fixed 위치가 어긋나지 않게 body로 포탈 */}
       {wCtx && createPortal(

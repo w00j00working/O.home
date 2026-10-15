@@ -154,6 +154,8 @@ export interface RelMember {
   nameBold?: boolean;
   /** 멤버 카드 이름 크기 px (v2.0) — 기본 17. 카드 폭이 좁아 이름마다 알맞은 크기가 다르다 */
   nameSize?: number;
+  /** 자관 안에서 쓸 이 캐릭터의 이름 폰트 — 미지정이면 캐릭터 프로필 폰트(char.fontId) */
+  nameFontId?: string;
   quoteColor?: string;           // 히어로 대사 글씨색 (페어, v1.9 — 기본 #d7dae0)
   quoteMarkColor?: string;       // 히어로 대사 따옴표색 (기본 포인트 소프트)
 }
@@ -228,6 +230,8 @@ export interface RelAuMember {
   fullOffY?: number;
   nameSize?: number;
   nameBold?: boolean;
+  /** 자관 안에서 쓸 이 캐릭터의 이름 폰트 — 미지정이면 캐릭터 프로필 폰트(char.fontId) */
+  nameFontId?: string;
   quoteColor?: string;
   quoteMarkColor?: string;
   /** 멤버 카드 얼굴칸 위치 — AU마다 따로 (v2.0 사용자 제보 — 원본에서 바꾸면 AU도 같이 바뀌었다).
@@ -258,6 +262,7 @@ export function auMember(m: RelMember, au?: RelAu): RelMember {
 export interface RelAuStyle {
   nameColor?: string;
   cpColor?: string;
+  ddayColor?: string;
   cpTagBg?: string;
   cpTagFg?: string;
   nameShadowColor?: string;
@@ -271,7 +276,7 @@ export interface RelAuStyle {
 export function auStyle(rel: Relation, au?: RelAu): RelAuStyle {
   const s = au?.style;
   const base: RelAuStyle = {
-    nameColor: rel.nameColor, cpColor: rel.cpColor,
+    nameColor: rel.nameColor, cpColor: rel.cpColor, ddayColor: rel.ddayColor,
     cpTagBg: rel.cpTagBg, cpTagFg: rel.cpTagFg,
     nameShadowColor: rel.nameShadowColor, nameShadow: rel.nameShadow,
     headerBgG1: rel.headerBgG1, headerBgG2: rel.headerBgG2, headerBgAngle: rel.headerBgAngle,
@@ -284,6 +289,9 @@ export function auStyle(rel: Relation, au?: RelAu): RelAuStyle {
   // 색 하나만 AU 값이고 나머지는 자관 값이면 어울리지 않는 조합이 나온다
   if (s.nameColor !== undefined || s.cpColor !== undefined) {
     out.nameColor = s.nameColor; out.cpColor = s.cpColor;
+  }
+  if (s.ddayColor !== undefined) {
+    out.ddayColor = s.ddayColor;
   }
   if (s.cpTagBg !== undefined || s.cpTagFg !== undefined) {
     out.cpTagBg = s.cpTagBg; out.cpTagFg = s.cpTagFg;
@@ -314,6 +322,15 @@ export function fullShadow(color?: string, strength?: number, geom = '0 8px 18px
   const f = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
   const [r, g, b] = [0, 2, 4].map(i => parseInt(f.slice(i, i + 2), 16) || 0);
   return `drop-shadow(${geom} rgba(${r},${g},${b},${a}))`;
+}
+
+export interface RelSideSlot {
+  imgId?: string;
+  crop?: import('@/components/ui/CropEditor').CropValue;
+  quote?: string;
+  quoteColor?: string;
+  quoteMarkColor?: string;
+  name?: string;
 }
 
 export interface RelAu {
@@ -348,6 +365,11 @@ export interface RelAu {
    *  원본(base)의 설정은 aus의 base 항목에 담긴다 */
   hideRp?: boolean;
   hideLog?: boolean;
+  hideTimeline?: boolean;
+  hideQa?: boolean;
+  ddayDate?: string;
+  sideSlots?: { l?: RelSideSlot; r?: RelSideSlot };
+  freeBlocks?: { id: string; title?: string; html: string }[];
 }
 
 export interface Relation {
@@ -370,6 +392,7 @@ export interface Relation {
   illuOn?: string;               // 전신/일러 스위치 선택색 (미지정: 포인트색)
   nameColor?: string;            // 자관명(히어로 타이틀) 글씨색 (v1.9 — 미지정: 테마)
   cpColor?: string;              // 캐치프레이즈 글씨색 (미지정: 테마)
+  ddayColor?: string;            // 디데이 글씨색 — 미지정: 기존 var(--faint) (v2.0 사용자 요청)
   cpTagBg?: string;              // CP/NCP 뱃지 배경색 (v2.0 — 미지정: 기본 pill)
   cpTagFg?: string;              // CP/NCP 뱃지 글씨색 (v2.0)
   nameShadowColor?: string;      // 자관명 그림자 색 (v2.0 — 미지정: 검정)
@@ -386,6 +409,11 @@ export interface Relation {
   pageBgAngle?: number;
   thumbId?: string;              // 리스트 썸네일 (IndexedDB, 4:3 크롭)
   thumbCrop?: import("@/components/ui/CropEditor").CropValue;
+  ddayDate?: string;             // 디데이 기준일 (YYYY-MM-DD)
+  sideSlots?: { l?: RelSideSlot; r?: RelSideSlot };
+  freeBlocks?: { id: string; title?: string; html: string }[];
+  logUrl?: string;
+  lorebookUrl?: string;
   members: RelMember[];          // 2인 = 좌/우, 3인+ = 다인 리스트
   visibility: Visibility;
   thumbClass: string;
@@ -407,6 +435,36 @@ export interface Relation {
    *  **화면에서 가리는 것일 뿐 완전한 차단이 아니다** — 답변은 공개로 저장돼 있어 주소를 직접
    *  다루는 사람에게는 보일 수 있다. 설정 화면에도 그대로 적어 둔다. */
   qaHide?: boolean;
+}
+
+const parseRelDate = (dateStr?: string): Date | undefined => {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return undefined;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const target = new Date(0);
+  target.setUTCFullYear(year, month - 1, day);
+  target.setUTCHours(0, 0, 0, 0);
+  if (target.getUTCFullYear() !== year || target.getUTCMonth() !== month - 1 || target.getUTCDate() !== day) return undefined;
+  return target;
+};
+
+/** 디데이 계산은 UTC 날짜 단위로, D-Day 위젯 plusOne처럼 시작일을 1일로 센다 */
+export function relDday(dateStr?: string, now = new Date()): string | undefined {
+  const target = parseRelDate(dateStr);
+  if (!target) return undefined;
+  const today = new Date(0);
+  today.setUTCFullYear(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  today.setUTCHours(0, 0, 0, 0);
+  const days = Math.round((today.getTime() - target.getTime()) / 86400000);
+  return `D${days < 0 ? `-${Math.abs(days)}` : `+${days + 1}`}`;
+}
+
+/** 디데이 날짜를 영문 월 표기로 표시한다 */
+export function relDdayDate(dateStr?: string): string | undefined {
+  const date = parseRelDate(dateStr);
+  if (!date) return undefined;
+  const day = date.getUTCDate();
+  const year = date.getUTCFullYear();
+  return `${date.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase()} ${String(day).padStart(2, '0')}, ${year}`;
 }
 
 export const CHAR_SEED: Character[] = [];

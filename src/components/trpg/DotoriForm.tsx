@@ -1,11 +1,11 @@
 ﻿'use client';
 // 도토리 등록/수정 공용 폼 (4.15) — 16:9 이미지 + 시나리오 정보 + 상태
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DotoriItem, DotoriStatus, DOTORI_STATUS_KEYS, useTrpgSettings } from '@/lib/galleryStore';
 import { KInput, KSelect } from '@/components/ui/Kit';
 import { CropEditor, CropValue, CropImg, CroppedBlobImg } from '@/components/ui/CropEditor';
-import { putBlob } from '@/lib/blobStore';
 import { useToast } from '@/components/ui/Toast';
+import { useImageSource, resolveImageRef, type ImageSource } from '@/components/ui/ImageSource';
 
 export interface DotoriFormValue {
   name: string; writer: string; rule: string; people: string;
@@ -34,14 +34,19 @@ export function DotoriForm({ initial, onSave, onCancel }: {
   const [removed, setRemoved] = useState(false);
   const [crop, setCrop] = useState<CropValue | undefined>(initial?.thumbCrop);
   const [cropOpen, setCropOpen] = useState(false);
+  const source = useImageSource(url => {
+    setFile(null); setFileUrl(url); setRemoved(false); setCrop(undefined); setCropOpen(true);
+  });
+  useEffect(() => () => { if (fileUrl.startsWith('blob:')) URL.revokeObjectURL(fileUrl); }, [fileUrl]);
 
   const save = async () => {
     if (!name.trim()) { toast('시나리오 이름을 입력해 주세요'); return; }
+    const image: ImageSource | undefined = file ? { kind: 'file', file } : fileUrl ? { kind: 'url', url: fileUrl } : undefined;
     onSave({
       name: name.trim(), writer: writer.trim(), rule: rule.trim(), people: people.trim(),
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
       link: link.trim() || undefined, status,
-      imgId: file ? await putBlob(file) : (removed ? undefined : initial?.imgId),
+      imgId: image ? await resolveImageRef(image) : (removed ? undefined : initial?.imgId),
       thumbCrop: crop,
     });
   };
@@ -53,7 +58,7 @@ export function DotoriForm({ initial, onSave, onCancel }: {
         <label className="k-label" style={{ margin: 0 }}>
           이미지 <span style={{ fontWeight: 400, color: 'var(--faint)' }}>— 카드 썸네일 16:9 · 원본은 잘리지 않음 (선택)</span>
         </label>
-        <div style={{ aspectRatio: '16/9', borderRadius: 9, overflow: 'hidden', position: 'relative', border: '1.5px dashed var(--line)', cursor: 'var(--cur-pointer,pointer)' }} onClick={() => document.getElementById('dtImgF')?.click()}>
+        <div tabIndex={0} {...source.handlers} style={{ aspectRatio: '16/9', borderRadius: 9, overflow: 'hidden', position: 'relative', border: '1.5px dashed var(--line)', cursor: 'var(--cur-pointer,pointer)' }} onClick={() => document.getElementById('dtImgF')?.click()}>
           {fileUrl
             ? <CropImg src={fileUrl} crop={crop} />
             : (!removed && initial?.imgId)
@@ -67,6 +72,7 @@ export function DotoriForm({ initial, onSave, onCancel }: {
             e.target.value = '';
           }} />
         <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="btn btn-ghost" onClick={() => source.open()}>🔗 이미지 주소 붙여넣기</button>
           {(fileUrl || (!removed && initial?.imgId)) && (
             <>
               <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 10.5 }}
@@ -109,6 +115,7 @@ export function DotoriForm({ initial, onSave, onCancel }: {
           onClose={() => setCropOpen(false)}
           onApply={c => { setCrop(c); setCropOpen(false); }} />
       )}
+      {source.element}
     </div>
   );
 }

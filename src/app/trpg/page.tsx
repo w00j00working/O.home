@@ -12,6 +12,8 @@ import { SearchBar, KInput, KTextarea, KRadio, KSelect, KDate, Pager } from '@/c
 import { Modal } from '@/components/ui/Modal';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { putBlob } from '@/lib/blobStore';
+import { useImageSource, resolveImageRef, type ImageSource } from '@/components/ui/ImageSource';
+import { fileDrop } from '@/lib/dnd';
 import { ColorField } from '@/components/ui/ColorField';
 import { CropEditor, CroppedBlobImg, CropValue, CropImg } from '@/components/ui/CropEditor';
 import { useToast } from '@/components/ui/Toast';
@@ -68,14 +70,22 @@ function TrpgPageInner() {
   const [nFile, setNFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // 썸네일 (선택) — 이미지 또는 단색/그라데이션 (v1.9 사용자 요청)
-  const [nThumb, setNThumb] = useState<File | null>(null);
+  const [nThumb, setNThumb] = useState<ImageSource | null>(null);
   const [nThumbUrl, setNThumbUrl] = useState('');
+  useEffect(() => () => { if (nThumbUrl.startsWith('blob:')) URL.revokeObjectURL(nThumbUrl); }, [nThumbUrl]);
   const [nColorMode, setNColorMode] = useState<'grad' | 'solid'>('grad');
   const [nThumbCrop, setNThumbCrop] = useState<CropValue | undefined>(undefined);
   const [cropOpen, setCropOpen] = useState(false);
   const [nC1, setNC1] = useState('#4c5a6e');
   const [nC2, setNC2] = useState('#242b36');
   const thumbRef = useRef<HTMLInputElement>(null);
+  const selectThumb = (image: ImageSource) => {
+    setNThumb(image);
+    setNThumbUrl(image.kind === 'url' ? image.url : URL.createObjectURL(image.file));
+    setNThumbCrop(undefined);
+    setCropOpen(true);
+  };
+  const thumbSource = useImageSource(url => selectThumb({ kind: 'url', url }));
 
   const counts = useMemo(() => {
     const m: Record<string, number> = {};
@@ -200,7 +210,7 @@ function TrpgPageInner() {
       password: nPw.trim() || undefined,
       listHidden: nListHidden,
       // 썸네일: 이미지(선택) 또는 단색/그라데이션
-      thumbId: nThumb ? await putBlob(nThumb) : undefined,
+      thumbId: nThumb ? await resolveImageRef(nThumb) : undefined,
       thumbCrop: nThumb ? nThumbCrop : undefined,
       thumbColor: nThumb ? undefined : { c1: nC1, c2: nColorMode === 'grad' ? nC2 : undefined },
     };
@@ -408,21 +418,25 @@ function TrpgPageInner() {
           <label className="k-label" style={{ margin: '4px 0 0' }}>썸네일 (선택)</label>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <div
+              tabIndex={0}
               style={{
                 width: 128, aspectRatio: '16/9', borderRadius: 8, overflow: 'hidden', cursor: 'var(--cur-pointer,pointer)',
                 border: '1.5px dashed var(--line)', flexShrink: 0, position: 'relative',
                 background: nThumbUrl ? undefined
                   : nColorMode === 'grad' ? `linear-gradient(135deg, ${nC1} 0%, ${nC2} 100%)` : nC1,
               }}
-              onClick={() => thumbRef.current?.click()}>
+              onClick={() => thumbRef.current?.click()}
+              {...fileDrop(fl => { if (fl[0]) selectThumb({ kind: 'file', file: fl[0] }); })} {...thumbSource.handlers}>
               {nThumbUrl && <CropImg src={nThumbUrl} crop={nThumbCrop} />}
             </div>
             <input ref={thumbRef} type="file" accept="image/*" style={{ display: 'none' }}
               onChange={e => {
                 const f = e.target.files?.[0];
-                if (f) { setNThumb(f); setNThumbUrl(URL.createObjectURL(f)); setNThumbCrop(undefined); setCropOpen(true); }
+                if (f) selectThumb({ kind: 'file', file: f });
                 e.target.value = '';
               }} />
+            <button type="button" className="btn btn-ghost" onClick={() => thumbSource.open()}>🔗 이미지 주소 붙여넣기</button>
+            {thumbSource.element}
             {nThumb ? (
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="btn btn-ghost" style={{ padding: '5px 11px', fontSize: 11 }}

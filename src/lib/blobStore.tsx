@@ -126,7 +126,7 @@ export type PromoteResult =
  * putBlob이 내용 해시로 걸러 주므로 여러 번 불려도 같은 파일이 두 번 올라가지 않는다.
  */
 export async function promoteToStorage(ref?: string): Promise<PromoteResult> {
-  if (!ref || /^(https?:|data:)/.test(ref)) return { kind: 'already' };
+  if (!ref || /^(https?:|data:)/i.test(ref)) return { kind: 'already' };
   if (!isServerMode()) return { kind: 'local-mode' };
   // blob: 은 새로고침하면 죽는 참조 — 원본을 되찾을 방법이 없다
   if (ref.startsWith('blob:')) return { kind: 'no-origin' };
@@ -174,7 +174,7 @@ export async function putBlobAs(id: string, blob: Blob): Promise<void> {
 
 export async function getBlob(id: string): Promise<Blob | null> {
   // 서버 모드에서 저장된 값은 공개 URL — 그대로 받아 온다 (백업 zip 내보내기 등에서 사용)
-  if (/^https?:/.test(id)) {
+  if (/^https?:/i.test(id)) {
     try {
       const res = await fetch(id);
       return res.ok ? await res.blob() : null;
@@ -191,23 +191,26 @@ export async function getBlob(id: string): Promise<Blob | null> {
 /* 세션 내 objectURL 캐시 (id → url) */
 const urlCache = new Map<string, string>();
 
+const isDirectUrl = (ref: string) =>
+  /^(https?:|data:|\/)/i.test(ref) || (!ref.includes(':') && /[/.]/.test(ref));
+
 /**
  * 파일 참조 → 표시 가능한 URL.
- * - http(s)/data: 는 그대로
+ * - http(s)/data: 및 상대 이미지 경로는 그대로
  * - blob: 은 새로고침 후 죽은 참조 → undefined (플레이스홀더 폴백)
  * - 그 외는 IndexedDB 파일 id로 간주해 로드
  */
 export function useBlobUrl(ref?: string): string | undefined {
   const [url, setUrl] = useState<string | undefined>(() => {
     if (!ref) return undefined;
-    if (/^(https?:|data:)/.test(ref)) return ref;
+    if (isDirectUrl(ref)) return ref;
     if (ref.startsWith('blob:')) return undefined;
     return urlCache.get(ref);
   });
 
   useEffect(() => {
     if (!ref) { setUrl(undefined); return; }
-    if (/^(https?:|data:)/.test(ref)) { setUrl(ref); return; }
+    if (isDirectUrl(ref)) { setUrl(ref); return; }
     if (ref.startsWith('blob:')) { setUrl(undefined); return; }
     if (urlCache.has(ref)) { setUrl(urlCache.get(ref)); return; }
     let alive = true;
@@ -232,7 +235,7 @@ export function BlobImg({ fileRef, ph, alt, style, imgStyle, label }: {
   const url = useBlobUrl(fileRef);
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt={alt ?? ''} style={{ width: '100%', height: '100%', objectFit: 'cover', ...imgStyle }} />;
+    return <img src={url} alt={alt ?? ''} referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', ...imgStyle }} />;
   }
   return <div className={`ph ${ph ?? ''}`} style={{ width: '100%', height: '100%', ...style }}>{label && <span>{label}</span>}</div>;
 }

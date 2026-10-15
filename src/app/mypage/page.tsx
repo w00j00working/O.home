@@ -13,7 +13,8 @@ import { RoadItem, ROAD_SEED } from '@/lib/galleryStore';
 import { useBoards } from '@/lib/boardStore';
 import { collectMyItems, MyItem } from '@/lib/myActivity';
 import { CroppedBlobImg } from '@/components/ui/CropEditor';
-import { putBlob, useBlobUrl, promoteToStorage } from '@/lib/blobStore';
+import { useBlobUrl, promoteToStorage } from '@/lib/blobStore';
+import { useImageSource, resolveImageRef, type ImageSource } from '@/components/ui/ImageSource';
 import { KInput } from '@/components/ui/Kit';
 import { Modal } from '@/components/ui/Modal';
 import { ColorField } from '@/components/ui/ColorField';
@@ -44,6 +45,20 @@ export default function MyPage() {
   // 프로필 이미지 선택 모달 (v1.9) — 단색 / 이미지 업로드 / 기본
   const [avOpen, setAvOpen] = useState(false);
   const [avColor, setAvColor] = useState('#6b7280');
+  const changeAvatar = async (image: ImageSource | File | undefined) => {
+    if (!image) return;
+    let id: string;
+    try {
+      id = await resolveImageRef(image instanceof File ? { kind: 'file', file: image } : image);
+    } catch (e) {
+      toast(`이미지를 저장소에 올리지 못했습니다 — ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    const r = await updateProfile({ avatarUrl: id });
+    setAvOpen(false);
+    toast(r.ok ? '프로필 이미지가 변경되었습니다' : r.error!);
+  };
+  const avatarSource = useImageSource(url => { void changeAvatar({ kind: 'url', url }); });
 
   // 백엔드를 붙이기 전에 올린 프로필 사진은 참조가 이 브라우저의 파일 id라 다른 데서 로그인하면
   // 안 보인다 (v2.0 사용자 발견). 원본이 여기 남아 있으면 저장소로 올리고 주소로 바꿔 둔다.
@@ -91,22 +106,6 @@ export default function MyPage() {
     const r = await updateProfile({ nickname: nick });
     toast(r.ok ? '저장되었습니다 — 이전에 쓴 글의 표시 이름은 그대로 남습니다' : r.error!);
   };
-  const changeAvatar = async (f: File | undefined) => {
-    if (!f) return;
-    // 올리기가 실패하면 예전엔 여기서 그냥 튕겨서 **아무 말도 없이** 끝났다 — 모달만 열린 채라
-    // 저장된 줄 알고 넘어가게 된다 (v2.0 사용자 지적: 「저장 안 됐는지 다른 브라우저에서 안 보인다」).
-    // 저장소 규칙을 안 붙였거나 버킷 설정이 없으면 여기서 걸리므로, 이유를 그대로 보여 준다.
-    let id: string;
-    try {
-      id = await putBlob(f);
-    } catch (e) {
-      toast(`이미지를 저장소에 올리지 못했습니다 — ${e instanceof Error ? e.message : String(e)}`);
-      return;
-    }
-    const r = await updateProfile({ avatarUrl: id });
-    setAvOpen(false);
-    toast(r.ok ? '프로필 이미지가 변경되었습니다' : r.error!);
-  };
   const changePw = async () => {
     if (!curPw || !newPw) { toast('현재 비밀번호와 새 비밀번호를 입력해 주세요'); return; }
     if (newPw !== newPw2) { toast('새 비밀번호가 서로 다릅니다'); return; }
@@ -135,12 +134,12 @@ export default function MyPage() {
           <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             {/* 프로필 이미지 — 클릭하면 단색/이미지 선택 모달 (v1.9, 이니셜 표시 없음) */}
             <div style={{ display: 'grid', gap: 8, justifyItems: 'center' }}>
-              <div style={{
+              <div tabIndex={0} style={{
                 width: 84, height: 84, borderRadius: '50%', overflow: 'hidden', cursor: 'var(--cur-pointer,pointer)',
                 background: avatarSrc ? undefined : (user.avatarColor ?? 'linear-gradient(135deg,#6b7280,#3c434d)'),
                 border: '1px solid var(--line)',
               }} onClick={() => { setAvColor(user.avatarColor ?? '#6b7280'); setAvOpen(true); }} data-tip="프로필 이미지 변경"
-                {...fileDrop(fl => changeAvatar(fl[0]))}>
+                {...fileDrop(fl => changeAvatar(fl[0]))} {...avatarSource.handlers}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 {avatarSrc && <img src={avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
               </div>
@@ -251,10 +250,12 @@ export default function MyPage() {
               }}>적용</button>
           </div>
           <div className="upzone" style={{ padding: '18px 14px', textAlign: 'center' }}
+            tabIndex={0}
             onClick={() => fileRef.current?.click()}
-            {...fileDrop(fl => changeAvatar(fl[0]))}>
+            {...fileDrop(fl => changeAvatar(fl[0]))} {...avatarSource.handlers}>
             <b style={{ display: 'block', marginBottom: 3 }}>이미지를 끌어다 놓거나 클릭</b>
           </div>
+          <button type="button" className="btn btn-ghost" onClick={() => avatarSource.open()}>🔗 이미지 주소 붙여넣기</button>
           {(user.avatarUrl || user.avatarColor) && (
             <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 11, justifySelf: 'end' }}
               onClick={async () => {
@@ -265,6 +266,7 @@ export default function MyPage() {
           )}
         </div>
       </Modal>
+      {avatarSource.element}
     </section>
   );
 }

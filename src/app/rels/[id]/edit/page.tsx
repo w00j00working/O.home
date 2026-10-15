@@ -54,7 +54,7 @@ function RelEditInner() {
             // 헤더는 AU 편집이면 그 AU에만 저장 — base 헤더는 유지 (v1.9 AU별 헤더 분리)
             ...(auObj ? {} : { headerImgId: v.headerImgId, headerCrop: v.headerCrop, slug: v.slug }),
             // 페이지 테마 — AU 편집이면 그 AU에만 (base 테마는 유지, v1.9)
-            ...(auObj ? {} : { themeMode: v.themeMode, themeColor: v.themeColor, themeTone: v.themeTone, illuBg: v.illuBg, illuOn: v.illuOn, nameColor: v.nameColor, cpColor: v.cpColor, cpTagBg: v.cpTagBg, cpTagFg: v.cpTagFg,
+            ...(auObj ? {} : { themeMode: v.themeMode, themeColor: v.themeColor, themeTone: v.themeTone, illuBg: v.illuBg, illuOn: v.illuOn, nameColor: v.nameColor, cpColor: v.cpColor, ddayColor: v.ddayColor, cpTagBg: v.cpTagBg, cpTagFg: v.cpTagFg,
                 nameShadowColor: v.nameShadowColor, nameShadow: v.nameShadow,
                 headerBgG1: v.headerBgG1, headerBgG2: v.headerBgG2, headerBgAngle: v.headerBgAngle,
                 pageBgG1: v.pageBgG1, pageBgG2: v.pageBgG2, pageBgAngle: v.pageBgAngle }),
@@ -65,7 +65,7 @@ function RelEditInner() {
             // (v2.0 사용자 발견: AU에서 고치면 다른 AU 페이지까지 같이 바뀌던 것.
             //  예전엔 이 줄이 auObj와 상관없이 늘 돌아서 자관 공통 members를 덮어썼다.
             //  AU 값은 아래 aus의 mset에 따로 담는다)
-            members: (!auObj && (v.fullScales || v.fullOffsets || v.quoteColors || v.quotes))
+            members: (!auObj && (v.fullScales || v.fullOffsets || v.quoteColors || v.quotes || v.nameFonts))
               ? r.members.map(m => ({
                 ...m,
                 fullScale: v.fullScales?.[m.charId] ?? m.fullScale,
@@ -74,6 +74,7 @@ function RelEditInner() {
                 quote: v.quotes?.[m.charId] ?? m.quote,
                 nameSize: v.nameSizes?.[m.charId] ?? m.nameSize,
                 nameBold: v.nameBolds?.[m.charId] ?? m.nameBold,
+                nameFontId: v.nameFonts?.[m.charId] || undefined,
                 quoteColor: v.quoteColors?.[m.charId]?.fg ?? m.quoteColor,
                 quoteMarkColor: v.quoteColors?.[m.charId]?.mark ?? m.quoteMarkColor,
               }))
@@ -83,6 +84,8 @@ function RelEditInner() {
               ? {
                 aus: r.aus.map(a => (a.id === auObj.id ? {
                   ...a, arts: v.arts, catchphrase: v.catchphrase,
+                  ddayDate: v.ddayDate, sideSlots: v.sideSlots, freeBlocks: v.freeBlocks,
+                  hideTimeline: v.hideTimeline, hideQa: v.hideQa, hideRp: v.hideRp, hideLog: v.hideLog,
                   // AU별 자관명 (v2.0 사용자 요청) — 비우면 자관 이름 그대로 쓰게 아예 지운다
                   name: v.auName?.trim() ? v.auName.trim() : undefined,
                   // AU별 폰트·전신 앞뒤 (v2.0 사용자 제보) — 원본이 아니라 이 AU에 담는다
@@ -90,7 +93,7 @@ function RelEditInner() {
                   // AU별 색·배경 (v2.0 사용자 요청) — 「직접 지정」을 끄면 undefined가 되어
                   // 자관 값으로 되돌아간다(auStyle이 묶음 단위로 판정한다)
                   style: {
-                    nameColor: v.nameColor, cpColor: v.cpColor,
+                    nameColor: v.nameColor, cpColor: v.cpColor, ddayColor: v.ddayColor,
                     cpTagBg: v.cpTagBg, cpTagFg: v.cpTagFg,
                     nameShadowColor: v.nameShadowColor, nameShadow: v.nameShadow,
                     headerBgG1: v.headerBgG1, headerBgG2: v.headerBgG2, headerBgAngle: v.headerBgAngle,
@@ -106,6 +109,7 @@ function RelEditInner() {
                     quote: v.quotes?.[m.charId],
                     nameSize: v.nameSizes?.[m.charId],
                     nameBold: v.nameBolds?.[m.charId],
+                    nameFontId: v.nameFonts?.[m.charId] || undefined,
                     quoteColor: v.quoteColors?.[m.charId]?.fg,
                     quoteMarkColor: v.quoteColors?.[m.charId]?.mark,
                   }])),
@@ -120,7 +124,13 @@ function RelEditInner() {
                 } : a)),
               }
               : {
-                catchphrase: v.catchphrase, arts: v.arts, thumbId: v.arts[0], thumbCrop: v.thumbCrop,
+                catchphrase: v.catchphrase, arts: v.arts, thumbId: v.thumbId, thumbCrop: v.thumbCrop,
+                ddayDate: v.ddayDate, sideSlots: v.sideSlots, freeBlocks: v.freeBlocks,
+                logUrl: v.logUrl, lorebookUrl: v.lorebookUrl,
+                // 원본 섹션 숨김도 base AU에 저장 (v2.0 사용자 요청)
+                aus: r.aus.map(a => (a.id === 'base' ? {
+                  ...a, hideTimeline: v.hideTimeline, hideQa: v.hideQa, hideRp: v.hideRp, hideLog: v.hideLog,
+                } : a)),
                 ...(v.fulls
                   ? {
                     members: r.members.map(m => ({
@@ -131,11 +141,14 @@ function RelEditInner() {
                       quote: v.quotes?.[m.charId] ?? m.quote,
                       nameSize: v.nameSizes?.[m.charId] ?? m.nameSize,
                       nameBold: v.nameBolds?.[m.charId] ?? m.nameBold,
+                      nameFontId: v.nameFonts?.[m.charId] || undefined,
                       quoteColor: v.quoteColors?.[m.charId]?.fg ?? m.quoteColor,
                       quoteMarkColor: v.quoteColors?.[m.charId]?.mark ?? m.quoteMarkColor,
                     })),
                   }
-                  : {}),
+                  : v.nameFonts ? {
+                    members: r.members.map(m => ({ ...m, nameFontId: v.nameFonts?.[m.charId] || undefined })),
+                  } : {}),
               }),
           } : r)));
           toast('저장되었습니다');

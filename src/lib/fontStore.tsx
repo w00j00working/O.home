@@ -157,6 +157,8 @@ export function FontProvider({ children }: { children: React.ReactNode }) {
 
   // 웹폰트 로드 — 수정 안 된 내장 구글폰트는 한 번에, 나머지는 URL별로
   useEffect(() => {
+    // 첫 페인트를 외부 폰트 CSS 응답으로 막지 않는다.
+    ensureLink('ohome-base-fonts', 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Noto+Serif+KR:wght@500;700&display=swap');
     const plain = BUILTIN_FONTS.filter(f => f.gfont && !st.overrides[f.id]?.cssUrl);
     const gf = plain.map(f => `family=${f.gfont}`).join('&');
     if (gf) ensureLink('ohome-gfonts', `https://fonts.googleapis.com/css2?${gf}&display=swap`);
@@ -174,14 +176,16 @@ export function FontProvider({ children }: { children: React.ReactNode }) {
          안 주면 직접 로드가 조용히 거부된다 (v2.0 사용자 제보 — 「등록한 폰트가 적용이 안 돼요」,
          화면 전체가 폴백 세리프로 남던 원인). 같은 출처 중계(/api/font)로 받아 CORS를 피한다 */
       if (/^https?:/.test(f.fileId)) {
-        const face = new FontFace(f.family, `url("/api/font?u=${encodeURIComponent(f.fileId)}")`);
+        const face = new FontFace(f.family, `url("/api/font?u=${encodeURIComponent(f.fileId)}")`, { display: 'swap' });
         face.load().then(fc => document.fonts.add(fc)).catch(() => { /* 접근 불가 — 폴백 렌더 */ });
         return;
       }
       getBlob(f.fileId).then(b => {
         if (!b) return;
-        const face = new FontFace(f.family, `url(${URL.createObjectURL(b)})`);
-        face.load().then(fc => document.fonts.add(fc)).catch(() => { /* 손상 파일 — 폴백 렌더 */ });
+        const url = URL.createObjectURL(b);
+        const face = new FontFace(f.family, `url(${url})`, { display: 'swap' });
+        face.load().then(fc => document.fonts.add(fc)).catch(() => { /* 손상 파일 — 폴백 렌더 */ })
+          .finally(() => URL.revokeObjectURL(url));
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

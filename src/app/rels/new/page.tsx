@@ -45,17 +45,20 @@ export default function RelNewPage() {
             id: v.slug ?? newId(),   // 지정한 페이지 주소 (v1.9) — 비우면 자동
             name: v.name, catchphrase: v.catchphrase, kind: v.kind,
             fontId: v.fontId, bodyFontId: v.bodyFontId, visibility: v.visibility,
-            arts: v.arts, thumbId: v.arts[0], thumbCrop: v.thumbCrop,
+            arts: v.arts, thumbId: v.thumbId, thumbCrop: v.thumbCrop,
+            ddayDate: v.ddayDate, sideSlots: v.sideSlots, freeBlocks: v.freeBlocks,
+            logUrl: v.logUrl, lorebookUrl: v.lorebookUrl,
             headerImgId: v.headerImgId, headerCrop: v.headerCrop,
             themeMode: v.themeMode, themeColor: v.themeColor, themeTone: v.themeTone,
             illuBg: v.illuBg, illuOn: v.illuOn,
-            nameColor: v.nameColor, cpColor: v.cpColor, cpTagBg: v.cpTagBg, cpTagFg: v.cpTagFg,
+            nameColor: v.nameColor, cpColor: v.cpColor, ddayColor: v.ddayColor, cpTagBg: v.cpTagBg, cpTagFg: v.cpTagFg,
             nameShadowColor: v.nameShadowColor, nameShadow: v.nameShadow,
             headerBgG1: v.headerBgG1, headerBgG2: v.headerBgG2, headerBgAngle: v.headerBgAngle,
             pageBgG1: v.pageBgG1, pageBgG2: v.pageBgG2, pageBgAngle: v.pageBgAngle,
             members, thumbClass: '',
             illustMode: v.kind === 'pair' ? 'duo' : 'one',
-            aus: [{ id: 'base', label: '원본', catchphrase: v.catchphrase }],
+            aus: [{ id: 'base', label: '원본', catchphrase: v.catchphrase,
+              hideTimeline: v.hideTimeline, hideQa: v.hideQa, hideRp: v.hideRp, hideLog: v.hideLog }],
             timeline: [], questions: [],
           };
           setRels([...rels, rel]);

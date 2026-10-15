@@ -148,10 +148,10 @@ export default function BoardDetailPage() {
   );
 
   return (
-    <section className="page">
+    <section className="page board-detail">
       <div className="page-head">
         <PageTitle href={boardHref(board.id)}>{boardTitle}</PageTitle>
-        <p>{post.notice ? '공지 · ' : `${post.category} · `}{post.author} · {fmtDate(post.date)}</p>
+        <p>{post.notice ? '공지 · ' : post.category ? `${post.category} · ` : ''}{post.author} · {fmtDate(post.date)}</p>
         <div className="head-actions">
           {/* 수정은 작성자 본인만 — 관리자도 타인 글은 삭제만 (v1.9) */}
           {isAuthor && (
@@ -163,7 +163,7 @@ export default function BoardDetailPage() {
         </div>
       </div>
 
-      <div className="panel" style={{ padding: '26px 28px' }}>
+      <div className="panel board-post">
         <h2 style={{ fontSize: 19, marginBottom: 4 }}>
           {post.secret && '🔒 '}{post.title}
         </h2>
@@ -191,8 +191,8 @@ export default function BoardDetailPage() {
       </div>
 
       {/* 댓글 + 대댓글 */}
-      <div className="panel" style={{ padding: 0, marginTop: 16 }}>
-        <div style={{ padding: '16px 18px' }}>
+      <div className="panel board-comments" style={{ padding: 0, marginTop: 16 }}>
+        <div className="board-comments-body">
           <h4 style={{ fontSize: 11.5, letterSpacing: '.12em', color: 'var(--faint)', marginBottom: 13 }}>
             COMMENTS {comments.length > 0 && <span style={{ color: 'var(--accent)' }}>{comments.length}</span>}
           </h4>

@@ -1,7 +1,7 @@
 'use client';
 // 그림백업 작성/수정 공용 폼 (4.11) — 제목/유형/이미지 다중 업로드(원본·최적화·크롭·⠿순서)/설명/설정/접기
 // 수정 모드: 기존 이미지(ref)는 그대로 유지·재정렬·삭제 가능, 새 파일 추가 가능
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useLocalList, newId, FoldType } from '@/lib/postStore';
@@ -15,9 +15,11 @@ import { KInput, KSelect, KRadio, KCheck, KDate } from '@/components/ui/Kit';
 import { RichEditor } from '@/components/ui/RichEditor';
 import { DragList } from '@/components/ui/DragList';
 import { CropEditor, CropValue } from '@/components/ui/CropEditor';
-import { putBlob, useBlobUrl } from '@/lib/blobStore';
+import { useBlobUrl } from '@/lib/blobStore';
 import { useToast } from '@/components/ui/Toast';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
+import { useImageSource, resolveImageRef } from '@/components/ui/ImageSource';
+import { isFileUrl } from '@/lib/transfer';
 
 interface UpFile {
   id: string; name: string; size?: number;
@@ -27,6 +29,11 @@ interface UpFile {
 }
 
 const fmtSize = (b?: number) => b == null ? '' : b >= 1048576 ? `${(b / 1048576).toFixed(1)}MB` : `${Math.round(b / 1024)}KB`;
+const isExternalRef = (ref: string) => /^https?:\/\//i.test(ref) && !isFileUrl(ref);
+const externalName = (url: string) => {
+  try { return decodeURIComponent(new URL(url).pathname.split('/').pop() || '') || '외부 이미지'; }
+  catch { return '외부 이미지'; }
+};
 
 function FilePreview({ f }: { f: UpFile }) {
   const loaded = useBlobUrl(f.ref);
@@ -61,7 +68,7 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
   const [type, setType] = useState<'log' | 'single' | 'vlist'>(initial?.type ?? 'log');
   const [files, setFiles] = useState<UpFile[]>(() =>
     (initial?.images ?? []).map((ref, i) => ({
-      id: newId(), name: `이미지 ${i + 1}`, ref, original: true,
+      id: newId(), name: isExternalRef(ref) ? externalName(ref) : `이미지 ${i + 1}`, ref, original: true,
       crop: i === 0 ? initial?.thumbCrop : undefined,
     })));
   const [desc, setDesc] = useState(initial?.desc ?? '');
@@ -90,6 +97,16 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
   const [foldType, setFoldType] = useState<FoldType | 'none'>(initial?.fold?.type ?? 'none');
   const [foldLabel, setFoldLabel] = useState(initial?.fold?.label ?? '');
   const [cropFor, setCropFor] = useState<UpFile | null>(null);
+  const source = useImageSource(url => {
+    setFiles(f => [...f, { id: newId(), name: externalName(url), ref: url, url, original: true }]);
+  });
+  const blobUrls = useRef(new Set<string>());
+  useEffect(() => {
+    const current = new Set(files.map(f => f.url).filter((url): url is string => !!url?.startsWith('blob:')));
+    blobUrls.current.forEach(url => { if (!current.has(url)) URL.revokeObjectURL(url); });
+    blobUrls.current = current;
+  }, [files]);
+  useEffect(() => () => { blobUrls.current.forEach(url => URL.revokeObjectURL(url)); }, []);
 
   if (!user) {
     return (
@@ -124,7 +141,7 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
   const post = async () => {
     if (!title.trim()) { toast('제목을 입력해 주세요'); return; }
     // 이미지 실저장 (IndexedDB) — 기존 ref는 유지, 새 파일만 저장
-    const imageIds = await Promise.all(files.map(f => (f.file ? putBlob(f.file) : Promise.resolve(f.ref!))));
+    const imageIds = await Promise.all(files.map(f => (f.file ? resolveImageRef({ kind: 'file', file: f.file }) : Promise.resolve(f.ref!))));
     if (isNew) {
       const p: BackupPost = {
         id: newId(), title: title.trim(), type,
@@ -136,7 +153,7 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
         fold: foldType === 'none' ? null : { type: foldType, label: foldType === 'custom' ? foldLabel : undefined },
       };
       setPosts([{ ...p, ...secStamp(sec.id) }, ...posts]);
-      toast('등록되었습니다 — 이미지는 이 브라우저에 실제 저장됩니다');
+      toast('등록되었습니다');
       router.push(`/gallery/${p.id}`);
     } else {
       setPosts(posts.map(x => x.id === initial.id ? {
@@ -174,7 +191,7 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
             </div>
           </div>
           <label className="k-label">이미지</label>
-          <div className="upzone" onClick={() => document.getElementById('bkFiles')?.click()}
+          <div className="upzone" tabIndex={0} {...source.handlers} onClick={() => document.getElementById('bkFiles')?.click()}
             onDragOver={e => e.preventDefault()}
             onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}>
             <b style={{ display: 'block', marginBottom: 3 }}>
@@ -182,6 +199,7 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
             </b>
             여러 장 선택 가능 · ⠿ 드래그로 순서 조정
           </div>
+          <button type="button" className="btn btn-ghost" onClick={() => source.open()}>🔗 이미지 주소 붙여넣기</button>
           <input id="bkFiles" type="file" accept="image/*" multiple style={{ display: 'none' }}
             onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
           {files.length > 0 && (
@@ -198,7 +216,7 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
                 <div className="pv"><FilePreview f={f} /></div>
                 <div className="nm">
                   <b>{f.name}</b>
-                  <small>{f.ref && !f.file ? '저장된 이미지' : fmtSize(f.size)}{f.crop ? ' · 썸네일 지정됨' : ''}</small>
+                  <small>{isExternalRef(f.ref ?? '') ? '외부 주소' : f.ref && !f.file ? '저장된 이미지' : fmtSize(f.size)}{f.crop ? ' · 썸네일 지정됨' : ''}</small>
                 </div>
                 {/* 원본/최적화 — 원본은 항상 서버 보존, 열람 제공본 선택 (6.1) */}
                 <div className="mini-seg">
@@ -270,6 +288,7 @@ export function BackupForm({ initial }: { initial: BackupPost | null }) {
       </div>
 
       {del.element}
+      {source.element}
       {cropFor && (
         <CropModal f={cropFor}
           onClose={() => setCropFor(null)}

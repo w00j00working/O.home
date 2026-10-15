@@ -11,6 +11,8 @@ import { TrpgLog, TRPG_SEED, TrpgLogBody, TRPG_BODY_SEED, bodyVisibility, showAs
 import { Relation, REL_SEED, Character, CHAR_SEED, charGrant } from '@/lib/charStore';
 import { Modal, ConfirmModal } from '@/components/ui/Modal';
 import { getBlob, putBlob, useBlobUrl } from '@/lib/blobStore';
+import { useImageSource, resolveImageRef, type ImageSource } from '@/components/ui/ImageSource';
+import { fileDrop } from '@/lib/dnd';
 import { PageTitle, EditableDesc } from '@/components/ui/PageText';
 import { KInput, KSelect, KDate, KTextarea } from '@/components/ui/Kit';
 import { ColorField } from '@/components/ui/ColorField';
@@ -115,14 +117,23 @@ export default function TrpgDetailPage() {
   const eThumbRef = useRef<HTMLInputElement>(null);
   // 썸네일 교체
   const [thumbMode, setThumbMode] = useState<'keep' | 'image' | 'color'>('keep');
-  const [eThumb, setEThumb] = useState<File | null>(null);
+  const [eThumb, setEThumb] = useState<ImageSource | null>(null);
   const [eThumbUrl, setEThumbUrl] = useState('');
+  useEffect(() => () => { if (eThumbUrl.startsWith('blob:')) URL.revokeObjectURL(eThumbUrl); }, [eThumbUrl]);
   const [eThumbCrop, setEThumbCrop] = useState<CropValue | undefined>(undefined);
   const curThumbUrl = useBlobUrl(l?.thumbId);   // 「현재 유지」로 위치만 조정할 때의 원본
   const [eCropOpen, setECropOpen] = useState(false);
   const [eColorMode, setEColorMode] = useState<'grad' | 'solid'>('grad');
   const [eC1, setEC1] = useState('#4c5a6e');
   const [eC2, setEC2] = useState('#242b36');
+  const selectThumb = (image: ImageSource) => {
+    setThumbMode('image');
+    setEThumb(image);
+    setEThumbUrl(image.kind === 'url' ? image.url : URL.createObjectURL(image.file));
+    setEThumbCrop(undefined);
+    setECropOpen(true);
+  };
+  const thumbSource = useImageSource(url => selectThumb({ kind: 'url', url }));
 
   const saveEdit = async () => {
     if (!e.title.trim()) { toast('시나리오 타이틀을 입력해 주세요'); return; }
@@ -140,7 +151,7 @@ export default function TrpgDetailPage() {
     // 썸네일 교체 준비
     let thumbPatch: Partial<TrpgLog> = {};
     if (thumbMode === 'image' && eThumb) {
-      thumbPatch = { thumbId: await putBlob(eThumb), thumbCrop: eThumbCrop, thumbColor: undefined };
+      thumbPatch = { thumbId: await resolveImageRef(eThumb), thumbCrop: eThumbCrop, thumbColor: undefined };
     } else if (thumbMode === 'keep' && l?.thumbId) {
       // 이미지는 그대로 두고 위치·확대만 바꾼 경우 (사용자 요청)
       thumbPatch = { thumbCrop: eThumbCrop };
@@ -463,17 +474,21 @@ html,body{margin:0!important;padding:0!important;height:auto!important;min-heigh
           <input ref={eThumbRef} type="file" accept="image/*" style={{ display: 'none' }}
             onChange={ev => {
               const f = ev.target.files?.[0];
-              if (f) { setEThumb(f); setEThumbUrl(URL.createObjectURL(f)); setEThumbCrop(undefined); setECropOpen(true); }
+              if (f) selectThumb({ kind: 'file', file: f });
               ev.target.value = '';
             }} />
+          <button type="button" className="btn btn-ghost" style={{ justifySelf: 'start' }} onClick={() => thumbSource.open()}>🔗 이미지 주소 붙여넣기</button>
+          {thumbSource.element}
           {thumbMode === 'image' && (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <div
+                tabIndex={0}
                 style={{
                   width: 128, aspectRatio: '16/9', borderRadius: 8, overflow: 'hidden', cursor: 'var(--cur-pointer,pointer)',
                   border: '1.5px dashed var(--line)', flexShrink: 0, position: 'relative',
                 }}
-                onClick={() => eThumbRef.current?.click()}>
+                onClick={() => eThumbRef.current?.click()}
+                {...fileDrop(fl => { if (fl[0]) selectThumb({ kind: 'file', file: fl[0] }); })} {...thumbSource.handlers}>
                 {eThumbUrl && <CropImg src={eThumbUrl} crop={eThumbCrop} />}
               </div>
               {eThumb && (

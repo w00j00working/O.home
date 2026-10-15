@@ -139,7 +139,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
          CORS 설정에 걸리면 조용히 실패한다 — 화면 어디에도 오류가 안 뜨고 배경만 안 바뀐다.
          다른 이미지들은 전부 주소를 그대로 쓰므로(useBlobUrl) 잘 나왔다. 여기만 예외였다. */
       if (/^(https?:|data:|blob:)/.test(ref)) {
-        root.style.setProperty('--bg-image', `url("${ref}")`);
+        const url = ref.replace(/["\\\n\r\f]/g, char => `\\${char.charCodeAt(0).toString(16)} `);
+        root.style.setProperty('--bg-image', `url("${url}")`);
         return () => { root.style.removeProperty('--bg-image'); };
       }
       // 브라우저 저장(IndexedDB) 파일 id — 그때만 풀어서 blob 주소를 만든다

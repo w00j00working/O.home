@@ -12,7 +12,7 @@ import {
   useBoardSettings, useBoards, badgeFor, boardBadgeStyle, boardHref, MAIN_BOARD_ID, BoardPerm,
 } from '@/lib/boardStore';
 import { SearchBar, Pager } from '@/components/ui/Kit';
-import { CropImg } from '@/components/ui/CropEditor';
+import { CroppedBlobImg } from '@/components/ui/CropEditor';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 
 const PER_PAGE = 10;
@@ -73,11 +73,11 @@ function BoardInner() {
 
   if (!boardsLoaded) return <section className="page" />;
 
-  const postBadge = (p: Post) => (
+  const postBadge = (p: Post) => (p.notice || p.secret || p.category) ? (
     <span style={boardBadgeStyle(badgeFor(boardSet, p, board.cats))}>
       {p.notice ? boardSet.system[0].label : p.secret ? boardSet.system[1].label : p.category}
     </span>
-  );
+  ) : null;
 
   return (
     <section className="page">
@@ -106,12 +106,10 @@ function BoardInner() {
             // 대표 이미지(직접 선택 + 크롭) 우선, 없으면 본문 첫 이미지 (v1.9)
             const thumb = canRead(p) ? (p.thumbSrc ?? firstImage(p.body)) : null;
             return (
-              <div className="bticket" key={p.id} onClick={() => { if (canRead(p)) router.push(`/board/${p.id}`); }}>
-                <div className="bt-thumb">
-                  {thumb
-                    ? <CropImg src={thumb} crop={p.thumbSrc ? p.thumbCrop : undefined} />
-                    : <div className="bt-ph">{(canRead(p) ? p.title : 'SECRET').slice(0, 1).toUpperCase()}</div>}
-                </div>
+              <div className={`bticket${thumb ? '' : ' no-thumb'}`} key={p.id} onClick={() => { if (canRead(p)) router.push(`/board/${p.id}`); }}>
+                {thumb && <div className="bt-thumb">
+                  <CroppedBlobImg fileRef={thumb} crop={p.thumbSrc ? p.thumbCrop : undefined} />
+                </div>}
                 <div className="bt-body">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     {postBadge(p)}
@@ -139,6 +137,11 @@ function BoardInner() {
               {/* 제목 칸 안에서 태그를 오른쪽 끝(=작성자 바로 왼쪽)에 정렬 (v2.0 사용자 요청) —
                   칸을 따로 만들면 행마다 그리드가 독립이라 작성자 열이 태그 길이만큼 어긋난다 */}
               <div className="tcell">
+                {canRead(p) && p.thumbSrc && (
+                  <div className="board-thumb">
+                    <CroppedBlobImg fileRef={p.thumbSrc} crop={p.thumbCrop} />
+                  </div>
+                )}
                 {canRead(p) ? (
                   <b>
                     {p.secret && '🔒 '}{p.title}

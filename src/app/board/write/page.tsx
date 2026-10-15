@@ -13,6 +13,9 @@ import { ConfirmModal } from '@/components/ui/Modal';
 import { RichEditor } from '@/components/ui/RichEditor';
 import { useToast } from '@/components/ui/Toast';
 import { PageTitle, EditableDesc } from '@/components/ui/PageText';
+import { FileDrop } from '@/components/ui/FileDrop';
+import { useBlobUrl } from '@/lib/blobStore';
+import { putThumbnail } from '@/lib/thumbnail';
 
 /** 에디터가 다루지 못해 정리될 만한 태그·속성이 있는가 — 전환 경고 판단 (인트로와 같은 기준) */
 const hasRichHtml = (html: string) =>
@@ -37,9 +40,6 @@ function WriteInner() {
   const [htmlView, setHtmlView] = useState<'code' | 'preview'>('code');
   const [askRich, setAskRich] = useState<null | (() => void)>(null);   // 정리 경고 후 실행할 전환
   const [category, setCategory] = useState('');
-  // 말머리 기본값 — 게시판별 목록(5.2) 로드 후 첫 항목
-  React.useEffect(() => { if (!category && board.cats[0]) setCategory(board.cats[0].label); // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board.cats.length]);
   const [secret, setSecret] = useState(false);
   const [notice, setNotice] = useState(false);
   // 태그 (v2.0 사용자 요청) — 쉼표로 구분해 입력, 저장할 때 배열로
@@ -48,10 +48,12 @@ function WriteInner() {
     [...new Set(s.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean))];
   const [foldType, setFoldType] = useState<FoldType | 'none'>('none');
   const [foldLabel, setFoldLabel] = useState('');
-  // 티켓 스킨 대표 이미지 (v1.9) — 본문에 삽입한 이미지 중 선택 + 16:9 썸네일 크롭
+  // 대표 이미지 — 별도 업로드 또는 본문 이미지 선택 + 16:9 썸네일 크롭
   const [thumbSrc, setThumbSrc] = useState<string | undefined>(undefined);
   const [thumbCrop, setThumbCrop] = useState<CropValue | undefined>(undefined);
   const [cropOpen, setCropOpen] = useState(false);
+  const [thumbBusy, setThumbBusy] = useState(false);
+  const thumbUrl = useBlobUrl(thumbSrc);
   // 본문 이미지 목록 — HTML <img> + Markdown 이미지
   const bodyImages = useMemo(() => {
     const out: string[] = [];
@@ -59,10 +61,6 @@ function WriteInner() {
     for (const m of body.matchAll(/!\[[^\]]*\]\(([^)\s]+)/g)) out.push(m[1]);
     return [...new Set(out)];
   }, [body]);
-  // 대표로 지정한 이미지가 본문에서 삭제되면 해제
-  useEffect(() => {
-    if (thumbSrc && !bodyImages.includes(thumbSrc)) { setThumbSrc(undefined); setThumbCrop(undefined); }
-  }, [bodyImages, thumbSrc]);
 
   // 수정 모드 — 저장본 로드가 끝나면 폼을 한 번 채움 (본문은 저장 모드 그대로: md→Markdown, html→HTML)
   const hydrated = useRef(false);
@@ -75,7 +73,7 @@ function WriteInner() {
     // 에디터로 쓴 글은 에디터로 다시 연다 — 예전에는 무조건 HTML 소스가 떠서
     // 에디터로 쓴 글을 수정하면 갑자기 태그가 보였다 (authored 없는 옛 글은 지금까지대로 HTML)
     setWriteMode(p.mode === 'md' ? 'md' : (p.authored === 'editor' ? 'editor' : 'html'));
-    setCategory(p.category);
+    setCategory(p.category ?? '');
     setSecret(p.secret); setNotice(p.notice);
     setFoldType(p.fold?.type ?? 'none'); setFoldLabel(p.fold?.label ?? '');
     setTagsText((p.tags ?? []).join(', '));
@@ -94,6 +92,7 @@ function WriteInner() {
   }
 
   const post = () => {
+    if (thumbBusy) return;
     if (!title.trim() || !body.trim()) { toast('제목과 내용을 입력해 주세요'); return; }
     if (editing) {
       // 수정 — 작성자 본인만 (관리자도 타인 글은 삭제만, v1.9). 작성자/날짜/댓글/소속 게시판은 유지
@@ -179,15 +178,39 @@ function WriteInner() {
               </div>
             </>
           )}
-          {/* 티켓 스킨 대표 이미지 — 본문에 삽입한 이미지 리스트에서 선택, 클릭 시 16:9 썸네일 위치 지정 (v1.9) */}
-          {board.skin === 'ticket' && bodyImages.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <label className="k-label" style={{ marginBottom: 7 }}>썸네일 (선택)</label>
+            <FileDrop accept="image/*" label={thumbBusy ? '썸네일 저장 중…' : '썸네일 이미지 업로드'}
+              onFiles={async files => {
+                if (!files[0] || thumbBusy) return;
+                setThumbBusy(true);
+                try {
+                  const ref = await putThumbnail(files[0]);
+                  setThumbSrc(ref); setThumbCrop(undefined);
+                } catch (e) {
+                  toast(`썸네일을 저장하지 못했습니다 — ${e instanceof Error ? e.message : String(e)}`);
+                } finally { setThumbBusy(false); }
+              }} />
+            {thumbUrl && (
+              <div style={{ marginTop: 10 }}>
+                <button type="button" aria-label="썸네일 위치 조정" disabled={thumbBusy}
+                  onClick={() => setCropOpen(true)}
+                  style={{ display: 'block', position: 'relative', width: 200, maxWidth: '100%', aspectRatio: '16/9', overflow: 'hidden', borderRadius: 8 }}>
+                  <CropImg src={thumbUrl} crop={thumbCrop} />
+                </button>
+                <button type="button" className="btn btn-ghost" disabled={thumbBusy}
+                  onClick={() => { setThumbSrc(undefined); setThumbCrop(undefined); }}>썸네일 삭제</button>
+              </div>
+            )}
+          </div>
+          {bodyImages.length > 0 && (
             <div style={{ marginTop: 14 }}>
-              <label className="k-label" style={{ marginBottom: 7 }}>대표 이미지 (티켓 썸네일)</label>
+              <label className="k-label" style={{ marginBottom: 7 }}>본문에서 썸네일 선택</label>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {bodyImages.map(src => (
                   <div key={src}
                     data-tip={thumbSrc === src ? '썸네일 위치 조정' : '대표로 선택'}
-                    onClick={() => { if (thumbSrc !== src) { setThumbSrc(src); setThumbCrop(undefined); } setCropOpen(true); }}
+                    onClick={() => { if (thumbBusy) return; if (thumbSrc !== src) { setThumbSrc(src); setThumbCrop(undefined); } setCropOpen(true); }}
                     style={{
                       width: 104, aspectRatio: '16/9', borderRadius: 8, overflow: 'hidden', cursor: 'var(--cur-pointer,pointer)',
                       position: 'relative', flexShrink: 0,
@@ -213,7 +236,7 @@ function WriteInner() {
             <div className="form-row">
               <label className="k-label" style={{ width: 60 }}>말머리</label>
               <KSelect minWidth={130} value={category} onChange={setCategory}
-                options={board.cats.map(x => ({ value: x.label, label: x.label }))} placeholder='말머리 선택' />
+                options={[{ value: '', label: '없음' }, ...board.cats.map(x => ({ value: x.label, label: x.label }))]} />
             </div>
             {/* 태그 (v2.0 사용자 요청) — 목록의 작성자 왼쪽에 나열되고 검색에 걸린다 */}
             <div className="form-row">
@@ -243,7 +266,7 @@ function WriteInner() {
           <div className="form-actions">
             <button className="btn btn-onbk"
               onClick={() => router.push(editing ? `/board/${editing.id}` : boardHref(board.id))}>CANCEL</button>
-            <button className="btn btn-accent" onClick={post}>{editing ? 'SAVE' : 'POST'}</button>
+            <button className="btn btn-accent" disabled={thumbBusy} onClick={post}>{editing ? 'SAVE' : 'POST'}</button>
           </div>
         </div>
       </div>
@@ -258,8 +281,8 @@ function WriteInner() {
         ]} />
 
       {/* 대표 썸네일 위치 지정 — 16:9 (티켓 스킨) */}
-      {cropOpen && thumbSrc && (
-        <CropEditor open src={thumbSrc} aspect="16:9" initial={thumbCrop}
+      {cropOpen && thumbUrl && (
+        <CropEditor open src={thumbUrl} aspect="16:9" initial={thumbCrop}
           onClose={() => setCropOpen(false)}
           onApply={c => { setThumbCrop(c); setCropOpen(false); }} />
       )}

@@ -7,6 +7,8 @@ import { useEffect } from 'react';
 import { useCursorSettings, CursorState } from '@/lib/cursorStore';
 import { getBlob } from '@/lib/blobStore';
 import { parseAni, isCur } from '@/lib/aniCursor';
+import { imageHttpUrl } from '@/components/ui/ImageSource';
+import { isFileUrl } from '@/lib/transfer';
 
 // 상태 → 전역 CSS 변수 (v1.9) — globals.css·인라인 스타일의 cursor:var(--cur-pointer,pointer) /
 // var(--cur-grab,grab) 사용처 전부에 자동 적용. 셀렉터 나열로 못 잡던 div+onClick 요소
@@ -63,6 +65,17 @@ export function CursorLayer() {
       for (const key of Object.keys(st.states) as CursorState[]) {
         const entry = st.states[key];
         if (!entry) continue;
+        const external = imageHttpUrl(entry.imgId);
+        if (external && !isFileUrl(external)) {
+          // 외부 커서는 CORS 다운로드 없이 주소를 직접 사용하고 CSS 문자열만 안전하게 이스케이프한다.
+          const url = new URL(external).href.replace(/["\\\n\r\f]/g, char => `\\${char.charCodeAt(0).toString(16)} `);
+          const rule = RULES[key];
+          const hs = ` ${entry.hx} ${entry.hy}`;
+          staticParts.push(`${rule.sel}{cursor:url("${url}")${hs}, ${rule.fallback} !important}`);
+          const vn = VAR_NAME[key];
+          if (vn) staticParts.push(`:root{${vn}:url("${url}")${hs}, ${rule.fallback}}`);
+          continue;
+        }
         const blob = await getBlob(entry.imgId);
         if (!blob || cancelled) continue;
         const buf = await blob.arrayBuffer();

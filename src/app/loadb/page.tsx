@@ -9,7 +9,8 @@ import {
 } from '@/lib/postStore';
 import { RoadItem, ROAD_SEED } from '@/lib/galleryStore';
 import { SearchBar, KInput } from '@/components/ui/Kit';
-import { putBlob, useBlobUrl } from '@/lib/blobStore';
+import { useBlobUrl } from '@/lib/blobStore';
+import { useImageSource, resolveImageRef, type ImageSource } from '@/components/ui/ImageSource';
 import { Modal, ConfirmModal, useConfirmDelete } from '@/components/ui/Modal';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
 import { KCheck } from '@/components/ui/Kit';
@@ -206,9 +207,9 @@ function RoadviewPageInner() {
   const [delFor, setDelFor] = useState<RoadItem | null>(null);
 
   // 즉시 업로드 (v1.7) — IndexedDB 실저장 (R2 연동 시 서버로 이전)
-  const upload = async (f: File | undefined) => {
+  const upload = async (f: ImageSource | File | undefined) => {
     if (!f) return;
-    const imgId = await putBlob(f); // IndexedDB 실저장 — 새로고침에도 유지
+    const imgId = await resolveImageRef(f instanceof File ? { kind: 'file', file: f } : f);
     const it: RoadItem = {
       id: newId(), title: '', author: user!.nickname, authorId: user!.id,
       date: new Date().toISOString(), imgId, ph: '', ratio: 'auto',
@@ -218,6 +219,7 @@ function RoadviewPageInner() {
     setItems([it, ...items]);
     toast(`${padNo(it.no)} 업로드되었습니다`);
   };
+  const imageSource = useImageSource(url => { void upload({ kind: 'url', url }); });
 
   const addComment = (id: string, text: string, guest?: { name: string }, parentId?: string) => {
     // 게스트 댓글 (방문자 권한, v1.9) — 닉네임만, authorId는 빈 값. parentId가 있으면 대댓글 (v2.0)
@@ -289,11 +291,13 @@ function RoadviewPageInner() {
               <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
                 onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
               <button className="btn btn-dark" onClick={() => fileRef.current?.click()}
-                {...fileDrop(fl => upload(fl[0]))}>↑ UPLOAD</button>
+                {...fileDrop(fl => upload(fl[0]))} {...imageSource.handlers}>↑ UPLOAD</button>
+              <button type="button" className="btn btn-ghost" onClick={() => imageSource.open()}>🔗 이미지 주소 붙여넣기</button>
             </>
           )}
           <SearchBar onSearch={setQ} />
         </div>
+        {imageSource.element}
       </div>
 
       {visible.slice(0, shown).map(it => (

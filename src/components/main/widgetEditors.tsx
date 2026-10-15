@@ -13,6 +13,20 @@ import { normalizeInternalLink } from '@/lib/link';
 import { KSelect } from '@/components/ui/Kit';
 import { ColorField } from '@/components/ui/ColorField';
 import { useFonts } from '@/lib/fontStore';
+import { useImageSource } from '@/components/ui/ImageSource';
+import { fileDrop } from '@/lib/dnd';
+
+function WidgetImageSource({ children, onSelect, onFiles }: {
+  children: React.ReactNode; onSelect: (url: string) => void; onFiles: (files: FileList) => void;
+}) {
+  const source = useImageSource(onSelect);
+  return <div tabIndex={0} style={{ display: 'grid', gap: 3, flexShrink: 0 }} {...source.handlers} {...fileDrop(onFiles)}>
+    {children}
+    <button type="button" className="btn btn-ghost" style={{ padding: '3px 6px', fontSize: 10 }}
+      onClick={() => source.open()}>🔗 이미지 주소</button>
+    {source.element}
+  </div>;
+}
 
 /* ---------- MEMO · 자유 텍스트 — settings.text (+ freetext: 폰트·크기·색·정렬, v1.9) ---------- */
 export function TextSettingEditor({ conf }: { conf: WidgetConf }) {
@@ -207,15 +221,42 @@ export function DecoEditor({ conf, onClose }: { conf: WidgetConf; onClose?: () =
     set({ slides: list, imgId: undefined, crop: undefined, link: undefined });
   const patchSlide = (id: string, p: Partial<DecoSlide>) =>
     setSlides(slides.map(x => (x.id === id ? { ...x, ...p } : x)));
+  const selectUrl = (url: string, target: string | null) => {
+    if (target) {
+      patchSlide(target, { imgId: url, crop: undefined });
+      if (fit === 'cover') setCropFor(target);
+      return;
+    }
+    const added = { id: `d${Date.now().toString(36)}-${slides.length}`, imgId: url };
+    setSlides([...slides, added]);
+    if (fit === 'cover') setCropFor(added.id);
+  };
+  const imageSource = useImageSource(url => selectUrl(url, null));
+  const selectFiles = async (files: File[], target: string | null) => {
+    if (!files.length) return;
+    if (target) {
+      patchSlide(target, { imgId: await putBlob(files[0]), crop: undefined });
+      if (fit === 'cover') setCropFor(target);
+      toast('이미지가 교체되었습니다');
+      return;
+    }
+    const added: DecoSlide[] = [];
+    for (const f of files) added.push({ id: `d${Date.now().toString(36)}-${slides.length + added.length}`, imgId: await putBlob(f) });
+    setSlides([...slides, ...added]);
+    if (added.length === 1 && fit === 'cover') setCropFor(added[0].id);
+    toast(added.length > 1 ? `이미지 ${added.length}장이 추가되었습니다` : '이미지가 저장되었습니다 — 위치를 조정해 주세요');
+  };
 
   const row = (sl: DecoSlide, i: number) => (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 0', borderBottom: '1px dashed var(--line)', width: '100%' }}>
       {slides.length > 1 && <span className="drag-h">⠿</span>}
       {/* 눌러서 이 장면의 이미지를 다른 것으로 교체 */}
-      <div style={{ width: 84, aspectRatio: String(ratio), borderRadius: 7, overflow: 'hidden', position: 'relative', flexShrink: 0, border: '1.5px dashed var(--line)', cursor: 'var(--cur-pointer,pointer)' }}
-        onClick={() => { setSwapFor(sl.id); document.getElementById(inputId)?.click(); }}>
-        <CroppedBlobImg fileRef={sl.imgId} crop={fit === 'contain' ? undefined : sl.crop} ph="" />
-      </div>
+      <WidgetImageSource onSelect={url => selectUrl(url, sl.id)} onFiles={files => void selectFiles(Array.from(files), sl.id)}>
+        <div style={{ width: 84, aspectRatio: String(ratio), borderRadius: 7, overflow: 'hidden', position: 'relative', flexShrink: 0, border: '1.5px dashed var(--line)', cursor: 'var(--cur-pointer,pointer)' }}
+          onClick={() => { setSwapFor(sl.id); document.getElementById(inputId)?.click(); }}>
+          <CroppedBlobImg fileRef={sl.imgId} crop={fit === 'contain' ? undefined : sl.crop} ph="" />
+        </div>
+      </WidgetImageSource>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1, minWidth: 0 }}>
         {/* 풀주소를 붙여넣어도 사이트 오리진을 떼고 상대경로로 (v1.9) */}
         <KInput placeholder="링크 (선택 — 클릭 시 이동)" value={sl.link ?? ''}
@@ -242,25 +283,13 @@ export function DecoEditor({ conf, onClose }: { conf: WidgetConf; onClose?: () =
           e.target.value = '';
           const target = swapFor;
           setSwapFor(null);
-          if (!files.length) return;
-          if (target) {
-            // 교체 — 위치는 다시 잡아야 하므로 크롭을 비우고 바로 조정 화면을 연다
-            patchSlide(target, { imgId: await putBlob(files[0]), crop: undefined });
-            if (fit === 'cover') setCropFor(target);
-            toast('이미지가 교체되었습니다');
-            return;
-          }
-          const added: DecoSlide[] = [];
-          for (const f of files) added.push({ id: `d${Date.now().toString(36)}-${slides.length + added.length}`, imgId: await putBlob(f) });
-          setSlides([...slides, ...added]);
-          // 한 장만 넣었으면 이어서 위치를 잡게 해준다
-          if (added.length === 1 && fit === 'cover') setCropFor(added[0].id);
-          toast(added.length > 1 ? `이미지 ${added.length}장이 추가되었습니다` : '이미지가 저장되었습니다 — 위치를 조정해 주세요');
+          await selectFiles(files, target);
         }} />
 
       {slides.length === 0
         ? (
-          <div className="ph" style={{ width: 160, aspectRatio: String(ratio), borderRadius: 8, border: '1.5px dashed var(--line)', cursor: 'var(--cur-pointer,pointer)' }}
+          <div tabIndex={0} className="ph" style={{ width: 160, aspectRatio: String(ratio), borderRadius: 8, border: '1.5px dashed var(--line)', cursor: 'var(--cur-pointer,pointer)' }}
+            {...imageSource.handlers} {...fileDrop(files => void selectFiles(Array.from(files), null))}
             onClick={() => { setSwapFor(null); document.getElementById(inputId)?.click(); }}>
             <span style={{ fontSize: 9 }}>IMAGE</span>
           </div>
@@ -297,7 +326,10 @@ export function DecoEditor({ conf, onClose }: { conf: WidgetConf; onClose?: () =
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 10.5 }}
+          {...imageSource.handlers} {...fileDrop(files => void selectFiles(Array.from(files), null))}
           onClick={() => { setSwapFor(null); document.getElementById(inputId)?.click(); }}>＋ 이미지 추가</button>
+        <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 10.5 }}
+          onClick={() => imageSource.open()}>🔗 이미지 주소로 넣기</button>
         <KCheck label="둥근 모서리" checked={rounded} onChange={v => set({ rounded: v })} />
         {onClose && <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={onClose}>CLOSE</button>}
       </div>
@@ -313,6 +345,7 @@ export function DecoEditor({ conf, onClose }: { conf: WidgetConf; onClose?: () =
           onApply={c => { patchSlide(cropTarget.id, { crop: c }); setCropFor(null); }} />
       )}
       {del.element}
+      {imageSource.element}
     </div>
   );
 }
@@ -331,14 +364,7 @@ interface SlideDraft extends BannerSlide { file?: File; localUrl?: string }
 function SlidePreview({ d }: { d: SlideDraft }) {
   if (d.localUrl) return <CropImg src={d.localUrl} crop={d.crop} />;
   if (d.imgId) return <CroppedBlobImg fileRef={d.imgId} crop={d.crop} ph="" />;
-  if (d.img) {
-    return (
-      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={d.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      </div>
-    );
-  }
+  if (d.img) return <CropImg src={d.img} crop={d.crop} />;
   return <div className={`ph ${d.cls ?? ''}`} style={{ position: 'absolute', inset: 0 }}><span style={{ fontSize: 8 }}>BANNER</span></div>;
 }
 
@@ -347,7 +373,7 @@ function SlideCrop({ d, ratio, onClose, onApply }: {
   d: SlideDraft; ratio: number; onClose: () => void; onApply: (c: CropValue) => void;
 }) {
   const loaded = useBlobUrl(d.imgId);
-  const src = d.localUrl ?? loaded;
+  const src = d.localUrl || loaded || d.img;
   if (!src) return null;
   return <CropEditor open src={src} aspect={ratio} aspectLabel="현재 배너 비율" initial={d.crop} onClose={onClose} onApply={onApply} />;
 }
@@ -378,15 +404,25 @@ export function BannerEditor({ conf, onSaved, onClose }: {
 
   const patch = (id: string, p: Partial<SlideDraft>) =>
     setDraft(list => list.map(x => (x.id === id ? { ...x, ...p } : x)));
+  const selectFile = (id: string, file?: File) => {
+    if (!file) return;
+    patch(id, { file, localUrl: URL.createObjectURL(file), img: '', imgId: undefined, crop: undefined });
+    setCropFor(id);
+  };
 
   const row = (d: SlideDraft) => (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0', borderBottom: '1px dashed var(--line)', width: '100%' }}>
       <span className="drag-h">⠿</span>
       {/* 이미지 업로드 미리보기 — 클릭해서 선택, 원본은 자르지 않고 위치값만 저장 */}
-      <div style={{ width: 96, aspectRatio: String(bannerRatio), borderRadius: 7, overflow: 'hidden', position: 'relative', flexShrink: 0, border: '1.5px dashed var(--line)', cursor: 'var(--cur-pointer,pointer)' }}
-        onClick={() => { setFileFor(d.id); document.getElementById('bnSlideF')?.click(); }}>
-        <SlidePreview d={d} />
-      </div>
+      <WidgetImageSource onSelect={url => {
+        patch(d.id, { file: undefined, localUrl: undefined, img: '', imgId: url, crop: undefined });
+        setCropFor(d.id);
+      }} onFiles={files => selectFile(d.id, files[0])}>
+        <div style={{ width: 96, aspectRatio: String(bannerRatio), borderRadius: 7, overflow: 'hidden', position: 'relative', flexShrink: 0, border: '1.5px dashed var(--line)', cursor: 'var(--cur-pointer,pointer)' }}
+          onClick={() => { setFileFor(d.id); document.getElementById('bnSlideF')?.click(); }}>
+          <SlidePreview d={d} />
+        </div>
+      </WidgetImageSource>
       <div style={{ display: 'grid', gap: 6, flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 6 }}>
           <KInput placeholder="캡션" value={d.cap} onChange={e => patch(d.id, { cap: e.target.value })} />
@@ -395,12 +431,12 @@ export function BannerEditor({ conf, onSaved, onClose }: {
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {/* 풀주소를 붙여넣어도 사이트 오리진을 떼고 /rels/… 상대경로로 (v1.9) */}
           <KInput placeholder="링크 (선택)" value={d.link} onChange={e => patch(d.id, { link: normalizeInternalLink(e.target.value) })} />
-          {(d.localUrl || d.imgId) && (
+          {(d.localUrl || d.imgId || d.img) && (
             <>
               <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 10, whiteSpace: 'nowrap' }}
                 onClick={() => setCropFor(d.id)}>✂ 위치</button>
               <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 10, whiteSpace: 'nowrap' }}
-                onClick={() => patch(d.id, { file: undefined, localUrl: undefined, imgId: undefined, crop: undefined })}>이미지 제거</button>
+                onClick={() => patch(d.id, { file: undefined, localUrl: undefined, img: '', imgId: undefined, crop: undefined })}>이미지 제거</button>
             </>
           )}
         </div>
@@ -419,7 +455,7 @@ export function BannerEditor({ conf, onSaved, onClose }: {
       <input id="bnSlideF" type="file" accept="image/*" style={{ display: 'none' }}
         onChange={e => {
           const f = e.target.files?.[0];
-          if (f && fileFor) { patch(fileFor, { file: f, localUrl: URL.createObjectURL(f), crop: undefined }); setCropFor(fileFor); }
+          if (fileFor) selectFile(fileFor, f);
           e.target.value = ''; setFileFor(null);
         }} />
       <DragList items={draft} keyOf={d => d.id} onReorder={setDraft} render={row} />

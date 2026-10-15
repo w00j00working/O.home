@@ -245,6 +245,8 @@ function extOfRef(ref: string, blob: Blob): string {
 
 /** 참조로 원본 바이트 얻기 — 현재 저장소 기준 (DB 이전·백업 만들 때) */
 export async function readFileByRef(ref: string): Promise<Blob | null> {
+  // 외부 이미지 주소는 참조만 보존한다 — CORS 다운로드 없이 저장소 파일만 옮긴다.
+  if (/^https?:/i.test(ref) && !isFileUrl(ref)) return null;
   if (isFileUrl(ref)) {
     try {
       const res = await fetch(ref);
@@ -257,6 +259,7 @@ export async function readFileByRef(ref: string): Promise<Blob | null> {
 /** 다른 DB로 통째 이전 — 현재 저장소에서 읽어 새 백엔드에 넣는다 */
 export async function migrateTo(target: Backend, onProgress?: Progress): Promise<{ files: number; items: number }> {
   onProgress?.('현재 데이터 읽는 중');
-  const snap = await dumpAll(backend(), onProgress);
+  const source = backend();
+  const snap = await dumpAll(source, onProgress);
   return loadAll(target, snap, readFileByRef, onProgress);
 }

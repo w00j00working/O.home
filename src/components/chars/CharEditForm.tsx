@@ -2,12 +2,13 @@
 // 캐릭터 등록/프로필 편집 — 전용 페이지 폼 (4.4)
 // 모달이 아니라 페이지라 잘못 클릭해도 닫히지 않음. 탭 내용은 별도 편집 화면으로 전환해 작성.
 // 아트는 여러 장 — 첫 장이 대표 풀 아트이자 리스트 썸네일(3:4 크롭) 원본 (6.1)
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Character, CharTab, ColorChip, Visibility, CharGrant } from '@/lib/charStore';
 import { GrantsEditor } from '@/components/chars/GrantsEditor';
 import { newId } from '@/lib/postStore';
-import { putBlob, getBlob, useBlobUrl } from '@/lib/blobStore';
+import { putBlob, useBlobUrl } from '@/lib/blobStore';
+import { useImageSource } from '@/components/ui/ImageSource';
 import { useFonts, deVarFamily } from '@/lib/fontStore';
 import { KInput, KSelect, KStep, KCheck } from '@/components/ui/Kit';
 import { RichEditor } from '@/components/ui/RichEditor';
@@ -30,6 +31,17 @@ function ArtThumb({ item, crop }: { item: ArtItem; crop?: CropValue }) {
   const src = item.url ?? loaded;
   if (!src) return <div className="ph" style={{ width: '100%', height: '100%' }} />;
   return <CropImg src={src} crop={crop} />;
+}
+
+function ArtImageSource({ children, onReplace }: { children: React.ReactNode; onReplace: (url: string) => void }) {
+  const source = useImageSource(onReplace);
+  return <div tabIndex={0} style={{ display: 'flex', gap: 8, alignItems: 'center' }} {...source.handlers}
+    onDragOver={e => e.preventDefault()}>
+    {children}
+    <button type="button" className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 10 }}
+      onClick={() => source.open()}>🔗 주소로 교체</button>
+    {source.element}
+  </div>;
 }
 
 export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }: {
@@ -83,6 +95,10 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
       return [...prev, ...items];
     });
   };
+  const artSource = useImageSource(url => {
+    if (arts.length === 0) { setThumbCrop(undefined); setCropOpen(true); }
+    setArts(prev => [...prev, { id: newId(), ref: url }]);
+  });
 
   const save = async () => {
     if (!name.trim()) { toast('이름을 입력해 주세요'); return; }
@@ -162,10 +178,15 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
             render={(a, i) => (
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', width: '100%', padding: '3px 0' }}>
                 <span className="drag-h">⠿</span>
-                <div data-tip="클릭하면 원본 보기" onClick={() => setLb(i)}
-                  style={{ width: 64, aspectRatio: '3/4', borderRadius: 7, overflow: 'hidden', position: 'relative', flexShrink: 0, cursor: 'zoom-in' }}>
-                  <ArtThumb item={a} crop={i === 0 ? thumbCrop : undefined} />
-                </div>
+                <ArtImageSource onReplace={url => {
+                  setArts(list => list.map(item => item.id === a.id ? { id: item.id, ref: url } : item));
+                  if (i === 0) { setThumbCrop(undefined); setCropOpen(true); }
+                }}>
+                  <div data-tip="클릭하면 원본 보기" onClick={() => setLb(i)}
+                    style={{ width: 64, aspectRatio: '3/4', borderRadius: 7, overflow: 'hidden', position: 'relative', flexShrink: 0, cursor: 'zoom-in' }}>
+                    <ArtThumb item={a} crop={i === 0 ? thumbCrop : undefined} />
+                  </div>
+                </ArtImageSource>
                 {i === 0 ? (
                   <>
                     <span className="pill dark">대표 · 썸네일</span>
@@ -186,9 +207,13 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
           onChange={e => { addArts(e.target.files); e.target.value = ''; }} />
         <button className="btn btn-ghost" style={addBtn}
           onClick={() => document.getElementById('chArtsF')?.click()}
+          {...artSource.handlers}
           {...fileDrop(fl => addArts(fl))}>
           ＋ ADD ART {arts.length === 0 && '(첫 장 등록 시 썸네일 크롭 지정)'}
         </button>
+        <button type="button" className="btn btn-ghost" style={addBtn}
+          onClick={() => artSource.open()}>🔗 이미지 주소로 넣기</button>
+        {artSource.element}
 
         {/* 기본 정보 스펙 */}
         <label className="k-label" style={{ margin: 0 }}>기본 정보 항목</label>
@@ -407,13 +432,8 @@ function FirstArtCrop({ open, item, crop, onClose, onApply }: {
   open: boolean; item: ArtItem; crop?: CropValue;
   onClose: () => void; onApply: (c: CropValue) => void;
 }) {
-  const [loadedUrl, setLoadedUrl] = useState('');
-  useEffect(() => {
-    if (item.url || !item.ref || !open) return;
-    getBlob(item.ref).then(b => { if (b) setLoadedUrl(URL.createObjectURL(b)); });
-  }, [item, open]);
+  const loadedUrl = useBlobUrl(item.ref);
   const src = item.url || loadedUrl;
   if (!src || !open) return null;
   return <CropEditor open={open} src={src} aspect="3:4" initial={crop} onClose={onClose} onApply={onApply} />;
 }
-

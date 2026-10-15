@@ -64,6 +64,11 @@ body::before{
   background-image:var(--bg-image,none);background-size:cover;background-position:center;
   filter:blur(var(--bg-blur,0px));pointer-events:none;
 }
+@media (hover:none) and (pointer:coarse){
+  body{background-attachment:scroll}
+  body::before{inset:0;filter:none}
+  body .topbar,body .bgm{-webkit-backdrop-filter:none;backdrop-filter:none}
+}
 button{font-family:inherit;cursor:var(--cur-pointer,pointer);border:none;background:none;color:inherit}
 /* 브라우저 기본이 pointer인 요소도 커스텀 커서 변수 경유 (5.1 v1.9) */
 a,select,summary{cursor:var(--cur-pointer,pointer)}
@@ -1009,12 +1014,12 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .rel-card .thumb{aspect-ratio:4/3;position:relative;overflow:hidden}
 .rel-card .thumb img{width:100%;height:100%;object-fit:cover}
 .rel-card .nm{padding:13px 16px;position:relative}
-/* 긴 이름·캐치프레이즈는 말줄임 (v1.9) — 멤버 점(.who) 자리를 위해 오른쪽 여백 확보 */
 .rel-card .nm b{font-family:var(--serif);font-size:calc(16px*var(--fs,1));letter-spacing:.18em;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rel-card .nm span{font-size:calc(11px*var(--fs,1));color:var(--faint);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:44px}
-/* 멤버 테마색 점 — 별도 줄 없이 텍스트와 겹쳐 카드 오른쪽 아래에 고정 */
-.rel-card .nm .who{position:absolute;right:14px;bottom:12px;display:flex;gap:4px}
-.rel-card .nm .who i{width:14px;height:14px;border-radius:50%;font-style:normal;box-shadow:0 0 0 2px var(--panel-solid)} /* 카드 구석 표시라 작게 (v2.0 사용자 요청) */
+.rel-card .nm span{font-size:calc(11px*var(--fs,1));color:var(--faint);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rel-card .nm .rel-dday{display:inline;font-size:calc(11px*var(--fs,1));font-weight:400;color:var(--faint);letter-spacing:.08em}
+.rel-card-links{display:flex;gap:10px;margin-top:8px;font-size:10px;letter-spacing:.08em;color:var(--faint)}
+.rel-card-links a{color:inherit;text-decoration:none}
+.rel-card-links a:hover{color:var(--ink);text-decoration:underline}
 /* 자관 상세 — 헤더 이미지: 풀폭 블러 + 아래로 페이드아웃 (v1.5) */
 .page-rel-detail{position:relative;max-width:1280px}
 /* 배경 위 레이어링 — absolute로 배치되는 요소(AU·관리자 액션·모달)는 제외 */
@@ -1035,9 +1040,18 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
    같은 값만큼 들여써서 되돌린다 (v2.0 사용자 발견 — 「묘하게 가운데가 아닌」 원인 · 실측으로 값 확정) */
 .rel-hero h1{font-family:var(--serif);font-size:calc(64px*var(--fs,1));font-weight:600;letter-spacing:.3em;text-indent:.3em;text-shadow:0 4px 30px rgba(0,0,0,.6)}
 .rel-hero .catch{font-size:calc(11px*var(--fs,1));letter-spacing:.7em;text-indent:.7em;color:#b9bec7;margin-top:2px}
+.rel-dday-detail{margin-top:9px;margin-bottom:20px;color:var(--faint);font-size:calc(10px*var(--fs,1));letter-spacing:.14em} /* 인용구와 간격 (v2.0 사용자 요청) */
 .rel-body{display:grid;grid-template-columns:320px 1fr 320px;gap:16px;margin-top:26px;align-items:start}
 /* 간단 프로필 카드 */
 .mini-prof{padding:0;overflow:hidden}
+.side-slot-card{padding:0;overflow:hidden;text-align:center}
+.side-slot-image{aspect-ratio:3/4;position:relative;overflow:hidden;background:rgba(0,0,0,.08)}
+.side-slot-name{display:block;padding:12px 14px 16px;font-size:calc(14px*var(--fs,1));letter-spacing:.1em}
+.side-slot-quote{padding:12px 16px 18px;font-family:var(--serif);font-size:calc(13px*var(--fs,1));line-height:1.6}
+.side-slot-quote::before{content:"\201C";color:var(--q-mark,var(--accent-soft));font-size:calc(20px*var(--fs,1));margin-right:5px}
+.rel-free-block{margin-top:16px;padding:20px 24px;overflow:hidden}
+.rel-free-block h3{margin:0 0 10px;font-family:var(--serif);font-size:calc(17px*var(--fs,1))}
+.rel-free-block .prose:empty{display:none}
 .mini-prof .hd{display:flex;gap:12px;padding:15px 15px 11px;align-items:center;border-bottom:1px solid var(--line)}
 .mini-prof .hd .face{width:52px;height:52px;border-radius:10px;flex-shrink:0;overflow:hidden}
 /* 이름·소개 칸은 줄어들 수 있어야 한다 — 안 그러면 긴 이름이 카드를 밀어 넓혀
@@ -1551,6 +1565,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 /* 제목 칸 안에서 태그를 오른쪽 끝에 (v2.0 사용자 요청 — 작성자 왼쪽).
    칸을 따로 만들면 행마다 그리드가 독립이라 작성자 열이 어긋난다 — 제목 칸 안에서 민다 */
 .brow .tcell{min-width:0;display:flex;align-items:center;gap:10px}
+.board-thumb{position:relative;flex-shrink:0;width:80px;aspect-ratio:16/9;border-radius:6px;overflow:hidden}
 .brow .tcell>b{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 .brow .tags{flex-shrink:0;max-width:45%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:calc(10.5px*var(--fs,1))}
 .brow .tags i{font-style:normal;color:color-mix(in srgb,var(--accent) 65%,var(--faint));margin-left:7px}
@@ -1567,6 +1582,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 /* 게시판 티켓형 스킨 (5.2 v1.9) — 왼쪽 16:9 썸네일 + 절취선 + 오른쪽 글 정보 */
 .bticket{display:grid;grid-template-columns:200px 1fr;background:var(--panel);border-radius:var(--radius);overflow:hidden;margin-bottom:12px;cursor:var(--cur-pointer,pointer);box-shadow:var(--sh-sm);transition:.2s;position:relative}
 .bticket:hover{transform:translateY(-2px)}
+.bticket.no-thumb{grid-template-columns:1fr}
 .bticket .bt-thumb{position:relative;min-height:calc(200px*9/16);overflow:hidden;border-right:2px dashed var(--line)}
 .bticket .bt-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .bticket .bt-ph{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#eceef1,#dfe2e7);font-family:var(--serif);font-size:calc(34px*var(--fs,1));color:var(--faint);letter-spacing:.1em}
@@ -1576,8 +1592,19 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .bticket .bt-meta{margin-top:auto;font-size:calc(11px*var(--fs,1));color:var(--faint);letter-spacing:.05em}
 @media(max-width:620px){
   .bticket{grid-template-columns:118px 1fr}
+  .bticket.no-thumb{grid-template-columns:1fr}
   .bticket .bt-thumb{min-height:calc(118px*9/16)}
   .bticket .bt-title{font-size:calc(14.5px*var(--fs,1))}
+}
+.board-post{padding:26px 28px}
+.board-comments-body{padding:16px 18px}
+@media(max-width:620px){
+  .board-detail>.panel{background:none;border:0;border-radius:0;box-shadow:none}
+  .board-post,.board-comments-body{padding:0}
+  .board-detail .cmt-input{padding-left:0;padding-right:0;background:none}
+  .brow{grid-template-columns:48px minmax(0,1fr) 64px;gap:8px;padding:12px}
+  .brow .dt{display:none}
+  .board-thumb{width:56px}
 }
 /* 본문 렌더 (MD/HTML 공통) */
 .post-body{font-size:calc(14.5px*var(--fs,1));line-height:1.85;color:#2c3037;word-break:break-word}

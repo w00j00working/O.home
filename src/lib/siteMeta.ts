@@ -74,7 +74,7 @@ export async function siteMeta(): Promise<SiteMeta> {
       const db = cfg.databaseId && cfg.databaseId !== '(default)' ? cfg.databaseId : '(default)';
       const url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${encodeURIComponent(db)}`
         + `/documents/settings/${encodeURIComponent(SETTING_KEY)}?key=${cfg.apiKey}`;
-      const res = await fetch(url, { next: { revalidate: 300 } });
+      const res = await fetch(url, { next: { revalidate: 300 }, signal: AbortSignal.timeout(3000) });
       if (!res.ok) return FALLBACK;
       return fromFirestore(await res.json()) ?? FALLBACK;
     }
@@ -82,6 +82,7 @@ export async function siteMeta(): Promise<SiteMeta> {
     const res = await fetch(url, {
       headers: { apikey: cfg.anonKey, Authorization: `Bearer ${cfg.anonKey}` },
       next: { revalidate: 300 },
+      signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return FALLBACK;
     const rows = await res.json() as

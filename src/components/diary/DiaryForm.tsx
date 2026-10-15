@@ -9,6 +9,8 @@ import { DragList } from '@/components/ui/DragList';
 import { useConfirmDelete } from '@/components/ui/Modal';
 import { putBlob, useBlobUrl } from '@/lib/blobStore';
 import { useToast } from '@/components/ui/Toast';
+import { useImageSource } from '@/components/ui/ImageSource';
+import { fileDrop } from '@/lib/dnd';
 
 export interface DiaryFormValue {
   title: string; date: string; moodId: string; body: string;
@@ -17,11 +19,18 @@ export interface DiaryFormValue {
 
 interface ImgItem { id: string; ref?: string; url?: string; file?: File }
 
-function ImgThumb({ item }: { item: ImgItem }) {
+function ImgThumb({ item, onReplace }: { item: ImgItem; onReplace: (url: string) => void }) {
   const loaded = useBlobUrl(item.ref);
   const src = item.url ?? loaded;
-  // eslint-disable-next-line @next/next/no-img-element
-  return src ? <img src={src} alt="" style={{ width: 64, height: 48, objectFit: 'cover', borderRadius: 6 }} /> : null;
+  const source = useImageSource(onReplace);
+  return <div tabIndex={0} style={{ display: 'flex', gap: 8, alignItems: 'center' }} {...source.handlers}
+    onDragOver={e => e.preventDefault()}>
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    {src && <img src={src} alt="" referrerPolicy="no-referrer" style={{ width: 64, height: 48, objectFit: 'cover', borderRadius: 6 }} />}
+    <button type="button" className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 10 }}
+      onClick={() => source.open()}>🔗 주소로 교체</button>
+    {source.element}
+  </div>;
 }
 
 export function DiaryForm({ initial, moods, onSave, onCancel }: {
@@ -41,6 +50,10 @@ export function DiaryForm({ initial, moods, onSave, onCancel }: {
   const [imgs, setImgs] = useState<ImgItem[]>(() => (initial?.imgIds ?? []).map(r => ({ id: newId(), ref: r })));
   const [visibility, setVisibility] = useState<Visibility>(initial?.visibility ?? 'public');
   const del = useConfirmDelete();   // 이미지 제거도 경고를 거친다
+  const addImages = (list: FileList | null) => {
+    if (list) setImgs(prev => [...prev, ...Array.from(list).map(f => ({ id: newId(), url: URL.createObjectURL(f), file: f }))]);
+  };
+  const imageSource = useImageSource(url => setImgs(prev => [...prev, { id: newId(), ref: url }]));
 
   const save = async () => {
     if (!title.trim()) { toast('제목을 입력해 주세요'); return; }
@@ -84,7 +97,8 @@ export function DiaryForm({ initial, moods, onSave, onCancel }: {
             render={i => (
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', width: '100%', padding: '3px 0' }}>
                 <span className="drag-h">⠿</span>
-                <ImgThumb item={i} />
+                <ImgThumb item={i} onReplace={url =>
+                  setImgs(list => list.map(item => item.id === i.id ? { id: item.id, ref: url } : item))} />
                 <span className="fx" style={{ marginLeft: 'auto' }}
                   onClick={() => del.ask('이 이미지를 빼시겠습니까?',
                     () => setImgs(l => l.filter(x => x.id !== i.id)))}>✕</span>
@@ -93,12 +107,15 @@ export function DiaryForm({ initial, moods, onSave, onCancel }: {
         )}
         <input id="dyImgF" type="file" accept="image/*" multiple style={{ display: 'none' }}
           onChange={e => {
-            const list = e.target.files;
-            if (list) setImgs(prev => [...prev, ...Array.from(list).map(f => ({ id: newId(), url: URL.createObjectURL(f), file: f }))]);
+            addImages(e.target.files);
             e.target.value = '';
           }} />
         <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11, justifySelf: 'center' }}
+          {...imageSource.handlers} {...fileDrop(addImages)}
           onClick={() => document.getElementById('dyImgF')?.click()}>＋ ADD IMAGE</button>
+        <button type="button" className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11, justifySelf: 'center' }}
+          onClick={() => imageSource.open()}>🔗 이미지 주소로 넣기</button>
+        {imageSource.element}
       </div>
 
       <div>

@@ -115,6 +115,7 @@ export default function UiKitPage() {
               ]} />
             <div style={{ maxWidth: 320, flex: 1 }}>
               <FileDrop accept="image/*" label="크롭할 이미지 선택"
+                onUrl={url => setCropSrc(url)}
                 onFiles={fs => { if (fs[0]) setCropSrc(URL.createObjectURL(fs[0])); }} />
             </div>
             {cropResult && (

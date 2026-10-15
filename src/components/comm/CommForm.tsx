@@ -1,11 +1,11 @@
 'use client';
 // 커미션 등록/수정 공용 폼 (4.18) — 이름/서브/상태/가격/마감 기준/슬롯/문의 링크/
 // 이미지 다중(첫 장 = 대표·썸네일)/설명(HTML+MD)/폰트 개별/페이지 테마컬러
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CommItem, CommSettings, SlotMode, SlotShape, SLOT_CHARS, badgeStyle, CommFormField, CommFormFieldType } from '@/lib/commStore';
 import { newId } from '@/lib/postStore';
 import { useFonts, deVarFamily } from '@/lib/fontStore';
-import { putBlob, useBlobUrl } from '@/lib/blobStore';
+import { useBlobUrl } from '@/lib/blobStore';
 import { KInput, KSelect, KStep, KCheck } from '@/components/ui/Kit';
 import { ColorField } from '@/components/ui/ColorField';
 import { useTheme } from '@/lib/ThemeProvider';
@@ -16,6 +16,7 @@ import { RichEditor } from '@/components/ui/RichEditor';
 import { useConfirmDelete } from '@/components/ui/Modal';
 import { fileDrop } from '@/lib/dnd';
 import { useToast } from '@/components/ui/Toast';
+import { useImageSource, resolveImageRef } from '@/components/ui/ImageSource';
 
 export interface CommFormValue {
   name: string; sub: string; badgeId: string;
@@ -82,6 +83,17 @@ export function CommForm({ initial, settings, onSave, onCancel }: {
   const [arts, setArts] = useState<ArtItem[]>(() => (initial?.images ?? []).map(r => ({ id: newId(), ref: r })));
   const [thumbCrop, setThumbCrop] = useState<CropValue | undefined>(initial?.thumbCrop);
   const [cropOpen, setCropOpen] = useState(false);
+  const source = useImageSource(url => {
+    if (!arts.length) { setThumbCrop(undefined); setCropOpen(true); }
+    setArts(prev => [...prev, { id: newId(), ref: url, url }]);
+  });
+  const blobUrls = useRef(new Set<string>());
+  useEffect(() => {
+    const current = new Set(arts.map(a => a.url).filter((url): url is string => !!url?.startsWith('blob:')));
+    blobUrls.current.forEach(url => { if (!current.has(url)) URL.revokeObjectURL(url); });
+    blobUrls.current = current;
+  }, [arts]);
+  useEffect(() => () => { blobUrls.current.forEach(url => URL.revokeObjectURL(url)); }, []);
   const [lb, setLb] = useState<number | null>(null);   // 이미지 썸네일 클릭 → 원본 보기
   const [descHtml, setDescHtml] = useState(initial?.descHtml ?? '');
   const [titleFontId, setTitleFontId] = useState(initial?.titleFontId ?? 'serif');
@@ -108,7 +120,7 @@ export function CommForm({ initial, settings, onSave, onCancel }: {
     if (!name.trim()) { toast('커미션 이름을 입력해 주세요'); return; }
     const min = parseInt(priceMin.replace(/[^\d]/g, ''), 10) || 0;
     const max = parseInt(priceMax.replace(/[^\d]/g, ''), 10) || min;
-    const images = await Promise.all(arts.map(a => (a.file ? putBlob(a.file) : Promise.resolve(a.ref!))));
+    const images = await Promise.all(arts.map(a => (a.file ? resolveImageRef({ kind: 'file', file: a.file }) : Promise.resolve(a.ref!))));
     onSave({
       name: name.trim(), sub: sub.trim(), badgeId,
       priceMin: min, priceMax: max, deadlineNote: deadlineNote.trim(),
@@ -156,7 +168,9 @@ export function CommForm({ initial, settings, onSave, onCancel }: {
           onChange={e => { addArts(e.target.files); e.target.value = ''; }} />
         <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11, justifySelf: 'center' }}
           onClick={() => document.getElementById('cmArtsF')?.click()}
+          {...source.handlers}
           {...fileDrop(fl => addArts(fl))}>＋ ADD IMAGE</button>
+        <button type="button" className="btn btn-ghost" onClick={() => source.open()}>🔗 이미지 주소 붙여넣기</button>
 
         <label className="k-label" style={{ margin: '4px 0 0' }}>
           커미션 설명 <span style={{ fontWeight: 400, color: 'var(--faint)' }}>— 문단 사이 어디든 이미지 삽입 가능 · 스크립트 불허</span>
@@ -356,6 +370,7 @@ export function CommForm({ initial, settings, onSave, onCancel }: {
         <Lightbox srcs={arts.map(a => a.url ?? a.ref ?? '')} index={lb} onClose={() => setLb(null)} />
       )}
       {del.element}
+      {source.element}
     </div>
   );
 }

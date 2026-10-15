@@ -85,15 +85,15 @@ export function FitText({ children, min, minRatio = 0.85, className, style }: {
 }
 
 /* ---------- textarea — 리사이즈 핸들 제거 + 내용 따라 자동 높이 ---------- */
-export function KTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function KTextarea({ autoGrow = true, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { autoGrow?: boolean }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fit = () => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || !autoGrow) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   };
-  useEffect(fit, [props.value]);
+  useEffect(fit, [props.value, autoGrow]);
   return (
     <textarea
       {...props}

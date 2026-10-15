@@ -6,13 +6,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocalList, newId } from '@/lib/postStore';
 import { TrpgChar, TrpgFace, TCHAR_SEED } from '@/lib/tcharStore';
-import { putBlob, getBlob, useBlobUrl } from '@/lib/blobStore';
+import { getBlob, useBlobUrl } from '@/lib/blobStore';
 import { CropEditor, CropImg, CropValue } from '@/components/ui/CropEditor';
 import { KInput } from '@/components/ui/Kit';
 import { RichEditor } from '@/components/ui/RichEditor';
 import { DragList } from '@/components/ui/DragList';
 import { Modal, useConfirmDelete } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { useImageSource, resolveImageRef } from '@/components/ui/ImageSource';
 
 interface FaceDraft {
   id: string;
@@ -27,6 +28,7 @@ interface FaceDraft {
 
 const imgDims = (src: string) => new Promise<{ w: number; h: number }>((resolve, reject) => {
   const im = new Image();
+  im.referrerPolicy = 'no-referrer';
   im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight });
   im.onerror = reject;
   im.src = src;
@@ -88,6 +90,13 @@ export function TCharForm({ editId }: { editId?: string }) {
   const [viewFor, setViewFor] = useState<FaceDraft | null>(null);      // 썸네일 클릭 — 원본 전체 보기 (v1.9)
   const [sharedCropOpen, setSharedCropOpen] = useState(false);         // 스탠딩 — 공유 크롭
   const fileRef = useRef<HTMLInputElement>(null);
+  const blobUrls = useRef(new Set<string>());
+  useEffect(() => {
+    const current = new Set(faces.map(f => f.url).filter((url): url is string => !!url?.startsWith('blob:')));
+    blobUrls.current.forEach(url => { if (!current.has(url)) URL.revokeObjectURL(url); });
+    blobUrls.current = current;
+  }, [faces]);
+  useEffect(() => () => { blobUrls.current.forEach(url => URL.revokeObjectURL(url)); }, []);
 
   // 수정 모드 — 저장본은 mount 후에 로드되므로, 로드가 끝나면 폼을 한 번 채움
   // (첫 렌더의 useState 초기값 시점엔 orig가 아직 시드뿐이라 직접 등록한 캐릭터는 비어 있던 버그 수정)
@@ -111,22 +120,30 @@ export function TCharForm({ editId }: { editId?: string }) {
     if (stdDims) return stdDims;
     const first = faces.find(f => f.url || f.imgId);
     if (!first) return null;
-    const src = first.url ?? (first.imgId ? URL.createObjectURL((await getBlob(first.imgId))!) : null);
+    const blob = !first.url && first.imgId && !/^https?:\/\//i.test(first.imgId) ? await getBlob(first.imgId) : null;
+    const temporaryUrl = blob ? URL.createObjectURL(blob) : null;
+    const src = first.url ?? temporaryUrl ?? first.imgId;
     if (!src) return null;
-    const d = await imgDims(src);
-    setStdDims(d);
-    return d;
+    try {
+      const d = await imgDims(src);
+      setStdDims(d);
+      return d;
+    } finally {
+      if (temporaryUrl) URL.revokeObjectURL(temporaryUrl);
+    }
   };
 
   const addFaces = async (list: FileList | null) => {
     if (!list || list.length === 0) return;
     const picked = Array.from(list); // 라이브 FileList 즉시 복사
     const items: FaceDraft[] = [];
-    let base = imgMode === 'standing' ? await resolveBase() : null;
+    let base: { w: number; h: number } | null;
+    try { base = imgMode === 'standing' ? await resolveBase() : null; }
+    catch { toast('기준 이미지를 읽을 수 없습니다'); return; }
     for (const f of picked) {
       const url = URL.createObjectURL(f);
       const d = await imgDims(url).catch(() => null);
-      if (!d) { toast(`이미지를 읽을 수 없습니다: ${f.name}`); continue; }
+      if (!d) { toast(`이미지를 읽을 수 없습니다: ${f.name}`); URL.revokeObjectURL(url); continue; }
       if (imgMode === 'standing') {
         // 스탠딩 인장 — 모든 파일의 가로세로 크기가 같아야 썸네일 위치를 공유할 수 있음 (v1.9)
         if (!base) { base = d; setStdDims(d); }
@@ -147,13 +164,33 @@ export function TCharForm({ editId }: { editId?: string }) {
     }
   };
 
+  const source = useImageSource(url => {
+    void (async () => {
+      try {
+        const d = await imgDims(url);
+        const base = imgMode === 'standing' ? await resolveBase() : null;
+        if (base && (d.w !== base.w || d.h !== base.h)) {
+          toast(`크기가 달라 제외되었습니다 (기준 ${base.w}×${base.h})`);
+          return;
+        }
+        if (imgMode === 'standing' && !base) setStdDims(d);
+        const item: FaceDraft = { id: newId(), label: '', imgId: url, url, w: d.w, h: d.h };
+        setFaces(fs => [...fs, item]);
+        if (!faces.length) {
+          if (imgMode === 'standing') setSharedCropOpen(true);
+          else setCropFor(item);
+        }
+      } catch { toast('이미지를 읽을 수 없습니다'); }
+    })();
+  });
+
   const save = async () => {
     if (!name.trim()) { toast('이름을 입력해 주세요'); return; }
     const outFaces: TrpgFace[] = [];
     for (const f of faces) {
       outFaces.push({
         id: f.id, label: f.label.trim() || undefined,
-        imgId: f.file ? await putBlob(f.file) : f.imgId,
+        imgId: f.file ? await resolveImageRef({ kind: 'file', file: f.file }) : f.imgId,
         crop: imgMode === 'stamp' ? f.crop : undefined,
         ph: f.ph,
       });
@@ -225,7 +262,7 @@ export function TCharForm({ editId }: { editId?: string }) {
             ? '스탠딩 인장은 모든 표정 파일의 가로세로 크기가 같아야 합니다 — 썸네일 위치를 한 번만 잡아 전 표정에 적용'
             : '단일 인장은 표정마다 1:1 썸네일 위치를 따로 지정합니다'}
         </p>
-        <div className="upzone" style={{ marginBottom: 8 }} onClick={() => fileRef.current?.click()}
+        <div className="upzone" tabIndex={0} {...source.handlers} style={{ marginBottom: 8 }} onClick={() => fileRef.current?.click()}
           onDragOver={e => e.preventDefault()}
           onDrop={e => { e.preventDefault(); addFaces(e.dataTransfer.files); }}>
           <b style={{ display: 'block', marginBottom: 3 }}>
@@ -233,6 +270,7 @@ export function TCharForm({ editId }: { editId?: string }) {
           </b>
           표정별로 여러 장 등록 · ⠿ 드래그로 순서 · 첫 장이 대표
         </div>
+        <button type="button" className="btn btn-ghost" onClick={() => source.open()}>🔗 이미지 주소 붙여넣기</button>
         <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
           onChange={e => { addFaces(e.target.files); e.target.value = ''; }} />
         <DragList items={faces} keyOf={f => f.id} onReorder={setFaces}
@@ -286,6 +324,7 @@ export function TCharForm({ editId }: { editId?: string }) {
       {/* 썸네일 클릭 — 원본 전체 보기 (v1.9) */}
       {viewFor && <FaceViewModal f={faces.find(x => x.id === viewFor.id) ?? viewFor} onClose={() => setViewFor(null)} />}
       {del.element}
+      {source.element}
     </div>
   );
 }

@@ -6,10 +6,11 @@ import { useLocalList, newId } from '@/lib/postStore';
 import { useSectionParam, secStamp, secQuery, MAIN_SEC } from '@/lib/sectionStore';
 import { ThreadWork, THREAD_SEED, useThreadSettings, threadCats } from '@/lib/threadStore';
 import { useFonts } from '@/lib/fontStore';
-import { putBlob, useBlobUrl } from '@/lib/blobStore';
+import { useBlobUrl } from '@/lib/blobStore';
 import { CropEditor, CropImg, CropValue } from '@/components/ui/CropEditor';
 import { KInput, KSelect, KLabel } from '@/components/ui/Kit';
 import { useToast } from '@/components/ui/Toast';
+import { useImageSource, resolveImageRef, type ImageSource } from '@/components/ui/ImageSource';
 
 const PHS = ['cool', 'warm', 'pale', 'red'];
 
@@ -49,6 +50,10 @@ export function ThreadForm({ editId }: { editId?: string }) {
   const posterRef = useRef<HTMLInputElement>(null);
   const origUrl = useBlobUrl(orig?.posterId);
   const previewUrl = posterUrl || origUrl;
+  const source = useImageSource(url => {
+    setPoster(null); setPosterUrl(url); setCrop(undefined); setCropOpen(true);
+  });
+  useEffect(() => () => { if (posterUrl.startsWith('blob:')) URL.revokeObjectURL(posterUrl); }, [posterUrl]);
 
   // 수정 모드 — 저장본은 mount 후에 로드되므로, 로드가 끝나면 폼을 한 번 채움
   // (첫 렌더 시점엔 시드뿐이라 직접 등록한 타래는 폼이 비어 있던 버그 수정 — TCharForm과 동일 패턴)
@@ -67,7 +72,8 @@ export function ThreadForm({ editId }: { editId?: string }) {
 
   const save = async () => {
     if (!title.trim()) { toast('작품명을 입력해 주세요'); return; }
-    const posterId = poster ? await putBlob(poster) : orig?.posterId;
+    const image: ImageSource | undefined = poster ? { kind: 'file', file: poster } : posterUrl ? { kind: 'url', url: posterUrl } : undefined;
+    const posterId = image ? await resolveImageRef(image) : orig?.posterId;
     if (orig) {
       setWorks(works.map(w => w.id === orig.id ? {
         ...w,
@@ -138,6 +144,7 @@ export function ThreadForm({ editId }: { editId?: string }) {
             <KLabel>Poster</KLabel>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
               <div
+                tabIndex={0} {...source.handlers}
                 style={{
                   width: 110, aspectRatio: '3/4', borderRadius: 9, overflow: 'hidden', cursor: 'var(--cur-pointer,pointer)',
                   border: '1.5px dashed var(--line)', position: 'relative', flexShrink: 0,
@@ -155,6 +162,7 @@ export function ThreadForm({ editId }: { editId?: string }) {
                 <button className="btn btn-ghost" style={{ padding: '5px 11px', fontSize: 11 }}
                   onClick={() => setCropOpen(true)}>✂ 위치·확대 조정</button>
               )}
+              <button type="button" className="btn btn-ghost" onClick={() => source.open()}>🔗 이미지 주소 붙여넣기</button>
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
@@ -168,6 +176,7 @@ export function ThreadForm({ editId }: { editId?: string }) {
           onClose={() => setCropOpen(false)}
           onApply={c => { setCrop(c); setCropOpen(false); }} />
       )}
+      {source.element}
     </>
   );
 }

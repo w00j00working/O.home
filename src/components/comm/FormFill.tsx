@@ -1,12 +1,13 @@
 'use client';
 // 커미션 양식 작성 (v1.9) — 상세 페이지 하단에서 방문자가 직접 입력하고,
-// 이미지까지 인라인(base64)된 단일 HTML 파일로 저장해 커미션주에게 제출.
+// 업로드 이미지는 인라인(base64), 외부 이미지는 주소로 단일 HTML 파일에 저장해 커미션주에게 제출.
 // 이미지 개당 10MB 제한 · 저장된 HTML에는 클릭 확대 뷰어(여러 장 좌우 넘김) 내장.
 import React, { useRef, useState } from 'react';
 import { CommFormField } from '@/lib/commStore';
 import { KTextarea, KCheck } from '@/components/ui/Kit';
 import { fileDrop } from '@/lib/dnd';
 import { useToast } from '@/components/ui/Toast';
+import { useImageSource } from '@/components/ui/ImageSource';
 
 const IMG_LIMIT = 10 * 1024 * 1024;   // 10MB
 
@@ -15,6 +16,17 @@ type Answer = string | string[] | ImgAns[];
 
 const esc = (s: string) => s
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function ImageAnswerZone({ onSelect, children }: { onSelect: (url: string) => void; children: React.ReactNode }) {
+  const source = useImageSource(onSelect);
+  return (
+    <div tabIndex={0} {...source.handlers} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      {children}
+      <button type="button" className="btn btn-ghost" onClick={() => source.open()}>🔗 이미지 주소 붙여넣기</button>
+      {source.element}
+    </div>
+  );
+}
 
 export function CommFormFill({ fields, commName }: { fields: CommFormField[]; commName: string }) {
   const toast = useToast();
@@ -28,6 +40,13 @@ export function CommFormFill({ fields, commName }: { fields: CommFormField[]; co
       return n;
     });
 
+  const addImages = (f: CommFormField, imgs: ImgAns[]) => {
+    setAnswers(a => {
+      const cur = (a[f.id] as ImgAns[] | undefined) ?? [];
+      return { ...a, [f.id]: f.multiple ? [...cur, ...imgs] : imgs.slice(0, 1) };
+    });
+  };
+
   const pickImages = (f: CommFormField, files: FileList | null) => {
     const picked = Array.from(files ?? []);
     if (picked.length === 0) return;
@@ -38,10 +57,7 @@ export function CommFormFill({ fields, commName }: { fields: CommFormField[]; co
       const r = new FileReader();
       r.onload = () => resolve({ name: file.name, dataUrl: String(r.result) });
       r.readAsDataURL(file);
-    }))).then(imgs => {
-      const cur = (answers[f.id] as ImgAns[] | undefined) ?? [];
-      setAns(f.id, f.multiple ? [...cur, ...imgs] : imgs.slice(0, 1));
-    });
+    }))).then(imgs => addImages(f, imgs));
   };
 
   const saveHtml = () => {
@@ -62,7 +78,7 @@ export function CommFormFill({ fields, commName }: { fields: CommFormField[]; co
         else {
           const imgs = a as ImgAns[];
           body = `<div class="a shots">${imgs.map(im =>
-            `<figure class="shot"><img src="${im.dataUrl}" alt="${esc(im.name)}"><figcaption>${esc(im.name)}</figcaption></figure>`).join('')}</div>`;
+            `<figure class="shot"><img src="${esc(im.dataUrl)}" alt="${esc(im.name)}"><figcaption>${esc(im.name)}</figcaption></figure>`).join('')}</div>`;
         }
       }
       return `<div class="q">${i + 1}. ${esc(f.label)}${f.required ? ' <span class="rq">*</span>' : ''}</div>${f.desc ? `<div class="qd">${esc(f.desc)}</div>` : ''}${body}`;
@@ -164,7 +180,11 @@ document.addEventListener('keydown',function(e){
               {f.type === 'image' && (() => {
                 const imgs = (Array.isArray(a) && typeof a[0] === 'object' ? a : []) as ImgAns[];
                 return (
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <ImageAnswerZone onSelect={url => {
+                    let name = '외부 이미지';
+                    try { name = decodeURIComponent(new URL(url).pathname.split('/').pop() || '') || name; } catch {}
+                    addImages(f, [{ name, dataUrl: url }]);
+                  }}>
                     <input ref={el => { fileRefs.current[f.id] = el; }} type="file" accept="image/*"
                       multiple={!!f.multiple} style={{ display: 'none' }}
                       onChange={e => { pickImages(f, e.target.files); e.target.value = ''; }} />
@@ -181,7 +201,8 @@ document.addEventListener('keydown',function(e){
                         onClick={() => fileRefs.current[f.id]?.click()}
                         {...fileDrop(fl => pickImages(f, fl))}>↑ 이미지 첨부 (10MB 이하{f.multiple ? ' · 여러 장' : ''})</button>
                     )}
-                  </div>
+                    <span className="hint">외부 이미지는 저장된 HTML에서도 인터넷 연결이 필요합니다</span>
+                  </ImageAnswerZone>
                 );
               })()}
             </div>

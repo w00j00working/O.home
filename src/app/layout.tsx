@@ -72,10 +72,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 if(navigator.userAgent.indexOf('Whale/')>-1){document.documentElement.style.colorScheme='light dark';}}catch(e){}})();`,
         }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Noto+Serif+KR:wght@500;700&display=swap"
-          rel="stylesheet"
-        />
       </head>
       <body>
         {/* 서버 연결 확정 후에 앱을 그림 — 설정(ohome.config.json/로컬/env)을 한 번 읽는다 (v2.0) */}

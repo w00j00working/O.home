@@ -50,13 +50,14 @@ import { useFonts, fontCssUrl, FontDef, FontRole, ROLE_LABEL, FOLLOW_MENU, FOLLO
 import { useToast } from '@/components/ui/Toast';
 import { PageTitle, EditableDesc, getPageText, setPageText } from '@/components/ui/PageText';
 import { putBlob } from '@/lib/blobStore';
+import { useImageSource } from '@/components/ui/ImageSource';
 import { getSetting, setSetting, pushLocalSettings, unsyncedSettingKeys, SETTING_KEYS } from '@/lib/settingStore';
 import { isServerMode, createBackend, backend } from '@/lib/backend';
 import type { BackendConfig, BackendKind } from '@/lib/backend/types';
 import { CONTENT_COLLECTIONS } from '@/lib/backend/types';
 import { visFloorOf } from '@/lib/visFloor';
 import { validateConfig, configFileText, saveLocalConfig, parseFirebaseSnippet, serverConfig, serverConfigSource } from '@/lib/serverConfig';
-import { migrateTo, findOrphanFiles } from '@/lib/transfer';
+import { migrateTo, findOrphanFiles, isFileUrl } from '@/lib/transfer';
 import { FIRESTORE_RULES, STORAGE_RULES } from '@/lib/firebaseRules';
 import { SCHEMA_SQL } from '@/lib/schemaSql';
 import { PushAdminRow } from '@/components/shell/PushSettings';
@@ -144,6 +145,10 @@ function DesignPane() {
     state, dirty: themeDirty, setMode, setPointAccent, setPointTone, setVar,
     resetMode, save, discard, presets, savePreset, applyPreset, removePreset,
   } = useTheme();
+  const backgroundSource = useImageSource(url => {
+    setVar('bgType', 'image');
+    setVar('bgImageId', url);
+  });
   // 디자인 탭의 색상 외 요소(로고·역할 폰트)도 SAVE 드래프트로 통합 (v1.9 사용자 확정)
   const siteDraft = useSiteDraft();
   const { rolesDirty, saveRoles, discardRoles } = useFonts();
@@ -257,7 +262,8 @@ function DesignPane() {
       </div>
 
       {/* 배경 — 그라데이션(각도) / 이미지(블러) 선택 (v1.9) */}
-      <div className="set-row" style={{ flexWrap: 'wrap' }}>
+      <div className="set-row" style={{ flexWrap: 'wrap' }} tabIndex={0}
+        onDragOver={e => e.preventDefault()} {...backgroundSource.handlers}>
         <div className="l"><b>배경</b><small>그라데이션(시작→끝·각도) 또는 이미지(업로드·블러)</small></div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <div className="mini-seg">
@@ -287,6 +293,7 @@ function DesignPane() {
                 onClick={() => document.getElementById('themeBgFile')?.click()}>
                 {state.vars.bgImageId ? 'CHANGE' : 'UPLOAD'}
               </button>
+              <button type="button" className="btn btn-ghost" onClick={() => backgroundSource.open()}>🔗 이미지 주소 붙여넣기</button>
               {state.vars.bgImageId && (
                 <button className="btn btn-ghost" style={{ height: 35, padding: '0 14px', fontSize: 11 }}
                   onClick={() => setVar('bgImageId', undefined)}>REMOVE</button>
@@ -297,6 +304,7 @@ function DesignPane() {
             </>
           )}
         </div>
+        {backgroundSource.element}
       </div>
 
       {/* 카드 색 — 패널·게시판 리스트·필터 등 공통 (v1.9) */}
@@ -1385,8 +1393,10 @@ function FaviconControl() {
   const { site, set } = useSiteDraft();
   const toast = useToast();
   const url = useBlobUrl(site.favicon);
+  const imageSource = useImageSource(url => set({ favicon: url }));
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} tabIndex={0}
+      onDragOver={e => e.preventDefault()} {...imageSource.handlers}>
       <span style={{
         width: 35, height: 35, borderRadius: 'var(--radius-s)', border: '1px solid var(--line)',
         background: 'var(--panel)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0,
@@ -1410,10 +1420,12 @@ function FaviconControl() {
         onClick={() => document.getElementById('siteFavicon')?.click()}>
         {site.favicon ? 'CHANGE' : 'UPLOAD'}
       </button>
+      <button type="button" className="btn btn-ghost" onClick={() => imageSource.open()}>🔗 이미지 주소 붙여넣기</button>
       {site.favicon && (
         <button className="btn btn-ghost" style={{ height: 35, padding: '0 14px', fontSize: 11 }}
           onClick={() => set({ favicon: undefined })}>REMOVE</button>
       )}
+      {imageSource.element}
     </div>
   );
 }
@@ -1475,6 +1487,8 @@ function CursorRow({ state }: { state: CursorState }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!entry?.imgId) { setUrl(null); return; }
+    if (/^https?:\/\//i.test(entry.imgId) && !isFileUrl(entry.imgId)) { setUrl(entry.imgId); return; }
+    setUrl(null);
     let cancelled = false;
     let obj: string | null = null;
     getBlob(entry.imgId).then(async b => {
@@ -1489,8 +1503,10 @@ function CursorRow({ state }: { state: CursorState }) {
   const inputId = `curFile-${state}`;
   const setEntry = (p: Partial<{ imgId: string; hx: number; hy: number }>) =>
     patch({ states: { ...st.states, [state]: { imgId: entry?.imgId ?? '', hx: 0, hy: 0, ...entry, ...p } } });
+  const imageSource = useImageSource(url => setEntry({ imgId: url }));
   return (
-    <div className="set-row" style={{ flexWrap: 'wrap' }}>
+    <div className="set-row" style={{ flexWrap: 'wrap' }} tabIndex={0}
+      onDragOver={e => e.preventDefault()} {...imageSource.handlers}>
       <div className="l" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         <span style={{
           width: 36, height: 36, borderRadius: 9, border: '1.5px dashed var(--line)',
@@ -1513,6 +1529,7 @@ function CursorRow({ state }: { state: CursorState }) {
           }} />
         <button className="btn btn-ghost" style={{ height: 33, padding: '0 12px', fontSize: 11 }}
           onClick={() => document.getElementById(inputId)?.click()}>{entry ? 'CHANGE' : 'UPLOAD'}</button>
+        <button type="button" className="btn btn-ghost" onClick={() => imageSource.open()}>🔗 이미지 주소 붙여넣기</button>
         {entry && (
           <>
             <span className="cp-lb">핫스팟 X</span>
@@ -1528,6 +1545,7 @@ function CursorRow({ state }: { state: CursorState }) {
           </>
         )}
       </div>
+      {imageSource.element}
     </div>
   );
 }
