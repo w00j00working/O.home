@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 // 도토리 등록/수정 공용 폼 (4.15) — 16:9 이미지 + 시나리오 정보 + 상태
 import React, { useState } from 'react';
 import { DotoriItem, DotoriStatus, DOTORI_STATUS_KEYS, useTrpgSettings } from '@/lib/galleryStore';
@@ -22,9 +22,10 @@ export function DotoriForm({ initial, onSave, onCancel }: {
   const [trpgSet] = useTrpgSettings(); // 상태 라벨 (환경설정 > TRPG)
   const isNew = !initial;
   const [name, setName] = useState(initial?.name ?? '');
-  const [writer, setWriter] = useState(initial?.writer ?? '');
-  const [rule, setRule] = useState(initial?.rule ?? '');
-  const [people, setPeople] = useState(initial?.people ?? '');
+  
+  // 💡 [변경] 기존 writer 상태를 'genre(장르)' 용도로 함께 사용합니다.
+  const [genre, setGenre] = useState(initial?.writer ?? ''); 
+  
   const [tags, setTags] = useState((initial?.tags ?? []).join(', '));
   const [link, setLink] = useState(initial?.link ?? '');
   // 새로 담는 시나리오는 대개 아직 일정이 없다 — 기본값을 「일정 미정」으로 (사용자 확정)
@@ -36,9 +37,14 @@ export function DotoriForm({ initial, onSave, onCancel }: {
   const [cropOpen, setCropOpen] = useState(false);
 
   const save = async () => {
-    if (!name.trim()) { toast('시나리오 이름을 입력해 주세요'); return; }
+    // 💡 [변경] 알림 메시지 문구도 '이름'으로 자연스럽게 수정했습니다.
+    if (!name.trim()) { toast('이름을 입력해 주세요'); return; }
+    
     onSave({
-      name: name.trim(), writer: writer.trim(), rule: rule.trim(), people: people.trim(),
+      name: name.trim(), 
+      writer: genre.trim(), // 💡 [변경] 입력한 '장르' 데이터를 기존 writer 필드에 매핑하여 안전하게 보존합니다.
+      rule: '',             // 💡 [변경] 이제 쓰지 않는 룰 칸은 빈 값으로 전달합니다.
+      people: '',           // 💡 [변경] 이제 쓰지 않는 인원 칸은 빈 값으로 전달합니다.
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
       link: link.trim() || undefined, status,
       imgId: file ? await putBlob(file) : (removed ? undefined : initial?.imgId),
@@ -58,7 +64,7 @@ export function DotoriForm({ initial, onSave, onCancel }: {
             ? <CropImg src={fileUrl} crop={crop} />
             : (!removed && initial?.imgId)
               ? <CroppedBlobImg fileRef={initial.imgId} crop={crop} ph="" />
-              : <div className="ph" style={{ position: 'absolute', inset: 0 }}><span style={{ fontSize: 10 }}>SCENARIO</span></div>}
+              : <div className="ph" style={{ position: 'absolute', inset: 0 }}><span style={{ fontSize: 10 }}>IMAGE</span></div>}
         </div>
         <input id="dtImgF" type="file" accept="image/*" style={{ display: 'none' }}
           onChange={e => {
@@ -81,14 +87,15 @@ export function DotoriForm({ initial, onSave, onCancel }: {
       {/* 우: 정보 + 저장 */}
       <div>
         <div className="panel widget" style={{ marginBottom: 14 }}>
-          <h4>시나리오</h4>
+          {/* 💡 [변경] 큰 대제목을 기존 '시나리오'에서 공통적인 '정보 입력' 성격으로 변경했습니다. */}
+          <h4>정보 관리</h4>
           <div style={{ display: 'grid', gap: 9 }}>
-            <KInput placeholder="시나리오 이름" value={name} onChange={e => setName(e.target.value)} />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <KInput placeholder="라이터" value={writer} onChange={e => setWriter(e.target.value)} />
-              <KInput placeholder="룰" value={rule} onChange={e => setRule(e.target.value)} style={{ maxWidth: 130 }} />
-              <KInput placeholder="인원" value={people} onChange={e => setPeople(e.target.value)} style={{ maxWidth: 90 }} />
-            </div>
+            {/* 💡 [변경] placeholder를 '시나리오 이름'에서 '이름'으로 수정 */}
+            <KInput placeholder="이름" value={name} onChange={e => setName(e.target.value)} />
+            
+            {/* 💡 [변경] 기존 라이터/룰/인원 3단 분리 칸을 제거하고, 시원하게 하나로 합쳐진 '장르' 입력창으로 교체 */}
+            <KInput placeholder="장르" value={genre} onChange={e => setGenre(e.target.value)} />
+            
             <KInput placeholder="태그 — 쉼표로 구분" value={tags} onChange={e => setTags(e.target.value)} />
             <KInput placeholder="링크 (선택)" value={link} onChange={e => setLink(e.target.value)} />
             <KSelect value={status} onChange={v => setStatus(v as DotoriStatus)}

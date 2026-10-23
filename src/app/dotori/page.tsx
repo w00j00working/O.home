@@ -55,8 +55,6 @@ function DotoriPageInner() {
     setItems(items.map(x => (x.id === id ? { ...x, status: s } : x)));
 
   // 편집모드 카드 드래그 정렬 (v1.9) — 훅이므로 early return보다 먼저.
-  // 정렬은 `shown` 전체 기준으로 다루고 카드에는 전체 기준 위치를 넘긴다(아래) — 페이지 안 위치로
-  // 넘기면 2페이지에서 엉뚱한 카드가 움직인다 (v2.0 페이지 나누기)
   const sort = useCardSort(shown, next => setItems(mergeOrder(items, next)), editOn && isAdmin);
 
   // 목록이 길어지면 페이지로 (v2.0 사용자 요청 — 한 페이지 12개)
@@ -67,8 +65,7 @@ function DotoriPageInner() {
   const start = (cur - 1) * PER_DT;
   useEffect(() => { setPage(1); }, [tab, query]);
 
-  /* 번호로 자리 옮기기 (v2.0 사용자 요청) — 페이지가 생기면 1페이지 것을 3페이지로 드래그할 수
-     없다. 번호는 저장하지 않고 자리에서 만들어(10, 20, 30 …) 배치를 바꾸면 저절로 맞는다. */
+  /* 번호로 자리 옮기기 (v2.0 사용자 요청) */
   const [ordFor, setOrdFor] = useState<{ id: string; x: number; y: number } | null>(null);
   const ordIdx = ordFor ? shown.findIndex(it => it.id === ordFor.id) : -1;
   const applyOrder = (wanted: number) => {
@@ -82,10 +79,10 @@ function DotoriPageInner() {
     <section className="page" onClick={() => setStatusFor(null)}>
       <div className="page-head">
         <PageTitle>{sec.id === 'main' ? 'DOTORI' : sec.name}</PageTitle>
-        <EditableDesc k="dotori-desc" def="가고 싶은 시나리오 저장함 — 도토리처럼 모아두기" />
+        <EditableDesc k="dotori-desc" def="수집한 카드 저장함 — 차곡차곡 모아두기" />
       </div>
 
-      {/* 상태 필터 탭 + 검색·ADD — 필터 줄 오른쪽 정렬 (v1.9 사용자 요청) */}
+      {/* 상태 필터 탭 + 검색·ADD */}
       <div className="toolrow" style={{ marginBottom: 16 }}>
         <div className="tag-row">
           {TABS.map(t => (
@@ -95,7 +92,7 @@ function DotoriPageInner() {
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <SearchBar placeholder="시나리오·라이터·태그 검색" onSearch={setQ} />
+          <SearchBar placeholder="이름·장르·태그 검색" onSearch={setQ} />
           {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/dotori/new' + secQuery('dotori', sec.id))}>＋ ADD</button>}
         </div>
       </div>
@@ -126,7 +123,7 @@ function DotoriPageInner() {
                   <button className="del" onClick={() => setDelFor(it)}>DELETE</button>
                 </div>
               )}
-              {/* 상태 전환 팝업 — [상태] 클릭 시에만 (기본 UI에는 미노출) */}
+              {/* 상태 전환 팝업 */}
               {statusFor === it.id && (
                 <div className="dt-status-pop" onClick={e => e.stopPropagation()}>
                   {DOTORI_STATUS_KEYS.map(s => (
@@ -139,16 +136,19 @@ function DotoriPageInner() {
               )}
             </div>
             <div className="bd">
-              {/* 이름 클릭 = 시나리오 링크 (새 탭) · 카드 클릭 = 편집 (관리자) */}
+              {/* 이름 클릭 = 링크 (새 탭) · 카드 클릭 = 편집 (관리자) */}
               <b className={`nm ${it.link ? 'has-link' : ''}`}
                 onClick={e => { if (it.link) { e.stopPropagation(); window.open(it.link, '_blank'); } }}
-                data-tip={it.link ? '시나리오 링크 열기 (새 탭)' : undefined}>
+                data-tip={it.link ? '링크 열기 (새 탭)' : undefined}>
                 {it.name}
               </b>
+              
+              {/* 💡 v2.0 매핑: 기존 룰/인원 출력 제거 및 장르(it.writer)만 단독 노출 */}
               <small className="meta">
-                {[it.writer, it.rule, it.people].filter(Boolean).join(' · ')}
+                {it.writer || ''}
               </small>
-              {/* 태그가 없어도 줄은 남긴다 — 태그 유무로 카드 키가 달라지지 않게 (v2.0 사용자 요청) */}
+              
+              {/* 태그가 없어도 줄은 남긴다 */}
               <div className="kw-row">
                 {it.tags.map(t => <span key={t} className="pill">{t}</span>)}
               </div>
@@ -157,7 +157,7 @@ function DotoriPageInner() {
           );
         })}
       </div>
-      {/* 페이저는 가운데, 개수는 오른쪽 끝 (v2.0 — 다른 목록과 같은 방식) */}
+      {/* 페이저 */}
       {shown.length > PER_DT && (
         <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center' }}>
           <span />
@@ -173,24 +173,41 @@ function DotoriPageInner() {
         </div>
       )}
 
-      {/* 우클릭 > 순서 번호 (v2.0 사용자 요청) */}
+      {/* 우클릭 > 순서 번호 (v2.0 최신 규격 반영) */}
       {ordFor && ordIdx >= 0 && (
-        <OrderMenu at={ordFor} current={orderNoOf(ordIdx)} total={shown.length}
-          onApply={applyOrder} onClose={() => setOrdFor(null)} />
+        <OrderMenu
+          at={ordFor}
+          current={orderNoOf(ordIdx)}
+          total={shown.length}
+          onApply={applyOrder}
+          onClose={() => setOrdFor(null)}
+        />
       )}
 
-      <ConfirmModal open={delFor !== null} title="도토리를 삭제하시겠습니까?"
-        body={`"${delFor?.name}" — 삭제하면 복구할 수 없습니다.`}
-        onClose={() => setDelFor(null)}
-        buttons={[
-          { label: 'DELETE', kind: 'accent', onClick: () => { setItems(items.filter(x => x.id !== delFor!.id)); setDelFor(null); } },
-          { label: 'CANCEL', kind: 'ghost', onClick: () => setDelFor(null) },
-        ]} />
+      {/* 삭제 확인 모달 (v2.0 최신 공통 모달 규격 반영) */}
+      {delFor && (
+        <ConfirmModal
+          open={true}
+          title="삭제 확인"
+          body={<p style={{ fontSize: 14 }}>[{delFor.name}] 항목을 삭제하시겠습니까?</p>}
+          onClose={() => setDelFor(null)}
+          buttons={[
+            { label: '취소', kind: 'ghost', onClick: () => setDelFor(null) },
+            { 
+              label: '삭제', 
+              kind: 'accent', 
+              onClick: () => {
+                setItems(items.filter(x => x.id !== delFor.id));
+                setDelFor(null);
+              } 
+            }
+          ]}
+        />
+      )}
     </section>
   );
 }
 
-/** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */
 export default function DotoriPage() {
   return <Suspense fallback={<section className="page" />}><DotoriPageInner /></Suspense>;
 }
