@@ -177,8 +177,9 @@ export function RelForm({ initial, auId, myChars, memberNames, existingIds, onSa
   const [catchphrase, setCatchphrase] = useState(auObj ? auObj.catchphrase : (initial?.catchphrase ?? ''));
   const [visibility, setVisibility] = useState<Visibility>(initial?.visibility ?? 'public');
   const [cp, setCp] = useState<RelCpTag>(initial?.cp ?? 'cp');   // CP/NCP (v1.9)
-  const [fontId, setFontId] = useState(initial?.fontId ?? 'serif');
-  const [bodyFontId, setBodyFontId] = useState(initial?.bodyFontId ?? 'default');
+  // AU 편집이면 그 AU에 정한 폰트부터 (v2.0 사용자 제보 — AU 폰트가 분리되지 않던 것)
+  const [fontId, setFontId] = useState((auObj?.fontId ?? initial?.fontId) ?? 'serif');
+  const [bodyFontId, setBodyFontId] = useState((auObj?.bodyFontId ?? initial?.bodyFontId) ?? 'default');
   const [picked, setPicked] = useState<string[]>([]);
   const [arts, setArts] = useState<ArtItem[]>(() => {
     const refs = auObj ? (auObj.arts ?? []) : (initial?.arts ?? (initial?.thumbId ? [initial.thumbId] : []));
@@ -266,7 +267,8 @@ export function RelForm({ initial, auId, myChars, memberNames, existingIds, onSa
   const [auName, setAuName] = useState(auObj?.name ?? '');
   // 문답 답변 가리기 (v2.0 사용자 요청) — 질문은 그대로 두고 답변 내용만
   const [qaHide, setQaHide] = useState(!!initial?.qaHide);
-  const [fullFront, setFullFront] = useState<string | undefined>(initial?.fullFront);
+  // 전신 앞뒤도 AU별 (v2.0) — AU에서 바꾼 앞뒤가 원본·다른 AU를 건드리지 않게
+  const [fullFront, setFullFront] = useState<string | undefined>(auObj?.fullFront ?? initial?.fullFront);
 
   // 내 캐릭터 연동 목록 — 선택된 캐릭터는 항상 표시, 나머지는 검색 필터 후 총 6명까지
   const q = charQuery.trim().toLowerCase();

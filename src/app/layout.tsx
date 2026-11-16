@@ -37,7 +37,11 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     // 탭 아이콘 (v2.0 사용자 요청) — 지정했으면 기본 favicon.ico 대신 그것을 쓴다.
     // 지정이 없으면 icons를 아예 넣지 않아 Next의 기본 파일 처리를 그대로 둔다
-    ...(favicon ? { icons: { icon: favicon } } : {}),
+    // 홈 화면 아이콘(apple-touch-icon)은 늘 둔다 — 아이폰 「홈 화면에 추가」·웹푸시용 (자놀 이식). 탭 아이콘을 지정했으면 그것으로
+    icons: { ...(favicon ? { icon: favicon } : {}), apple: favicon || '/icon-192.png' },
+    manifest: '/manifest.webmanifest',
+    // 아이폰에서 홈 화면 웹앱(standalone)으로 열리게 — 그래야 웹푸시를 받을 수 있다
+    appleWebApp: { capable: true, title: title.replace(/ — 개인홈$/, ''), statusBarStyle: 'default' },
     openGraph: { title, description, type: 'website' },
     twitter: { card: 'summary', title, description },
   };
@@ -51,11 +55,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko">
       <head>
+        {/* 웨일·크롬의 「웹 콘텐츠 다크 모드」(강제 어둡게)가 페이지를 다시 칠하지 않게 (v2.0 사용자 제보).
+            CSS의 color-scheme과 같은 선언인데, 스타일 로드 전 첫 페인트부터 적용되도록 메타로도 둔다 */}
+        <meta name="color-scheme" content="only light" />
+        {/* 다크리더 계열 확장의 강제 변색 잠금 (v2.0) — color-scheme을 무시하는 확장도 이 메타는 존중한다.
+            테마 색은 전부 사이트 설정이 직접 관리하므로 외부 변색은 어떤 경로든 막는 게 맞다 */}
+        <meta name="darkreader-lock" />
         {/* 테마 FOUC 방지 — <body> 안에 있으면 body 배경이 :root의 다크 기본값으로 먼저 페인트될 여지가
             있다(사용자 발견 — "처음 접속할 때 기본 다크모드가 깜빡") — body 자체가 파싱되는 순간 CSS만으로도
             그려질 수 있기 때문. <head> 맨 앞으로 옮겨 렌더 차단 구간(첫 페인트 전) 안에서 먼저 실행되게 한다 (v2.0) */}
         <script dangerouslySetInnerHTML={{
-          __html: `(function(){try{var m=JSON.parse(localStorage.getItem('ohome.themeCss.v1'));if(m){var s=document.documentElement.style;for(var k in m)s.setProperty(k,m[k]);}}catch(e){}})();`,
+          __html: `(function(){try{var m=JSON.parse(localStorage.getItem('ohome.themeCss.v1'));if(m){var s=document.documentElement.style;for(var k in m)s.setProperty(k,m[k]);}
+/* 웨일 전용 (v2.0 사용자 제보) — 웨일의 「웹 콘텐츠 다크 모드」는 only light 옵트아웃을 무시한다.
+   자체 다크 엔진은 「다크를 지원하는 사이트」는 건너뛰므로, 웨일에서만 다크 지원을 선언한다.
+   다른 브라우저는 검증된 only light 유지 — 영향 범위를 웨일로 좁힌다 */
+if(navigator.userAgent.indexOf('Whale/')>-1){document.documentElement.style.colorScheme='light dark';}}catch(e){}})();`,
         }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link

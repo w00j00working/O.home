@@ -48,8 +48,9 @@ function RelEditInner() {
         onSave={v => {
           setRels(rels.map(r => (r.id === rel.id ? {
             ...r,
-            name: v.name, kind: v.kind,
-            fontId: v.fontId, bodyFontId: v.bodyFontId, visibility: v.visibility,
+            name: v.name, kind: v.kind, visibility: v.visibility,
+            // 폰트는 AU 편집이면 그 AU에만 (v2.0 사용자 제보 — 여태 원본에 저장돼 전체가 같이 바뀌었다)
+            ...(auObj ? {} : { fontId: v.fontId, bodyFontId: v.bodyFontId }),
             // 헤더는 AU 편집이면 그 AU에만 저장 — base 헤더는 유지 (v1.9 AU별 헤더 분리)
             ...(auObj ? {} : { headerImgId: v.headerImgId, headerCrop: v.headerCrop, slug: v.slug }),
             // 페이지 테마 — AU 편집이면 그 AU에만 (base 테마는 유지, v1.9)
@@ -57,9 +58,8 @@ function RelEditInner() {
                 nameShadowColor: v.nameShadowColor, nameShadow: v.nameShadow,
                 headerBgG1: v.headerBgG1, headerBgG2: v.headerBgG2, headerBgAngle: v.headerBgAngle,
                 pageBgG1: v.pageBgG1, pageBgG2: v.pageBgG2, pageBgAngle: v.pageBgAngle }),
-            cp: v.cp,
-            qaHide: v.qaHide,
-            fullFront: v.fullFront ?? r.fullFront,
+            // CP/문답 숨김은 자관 전체 설정(AU 폼에는 없음) · 전신 앞뒤는 AU면 그 AU에만 (v2.0)
+            ...(auObj ? {} : { cp: v.cp, qaHide: v.qaHide, fullFront: v.fullFront ?? r.fullFront }),
             illustMode: v.kind === 'pair' ? r.illustMode : 'one',
             // 전신 크기·위치·한마디·대사 색 — **AU를 편집 중이면 자관 공통을 건드리지 않는다**
             // (v2.0 사용자 발견: AU에서 고치면 다른 AU 페이지까지 같이 바뀌던 것.
@@ -85,6 +85,8 @@ function RelEditInner() {
                   ...a, arts: v.arts, catchphrase: v.catchphrase,
                   // AU별 자관명 (v2.0 사용자 요청) — 비우면 자관 이름 그대로 쓰게 아예 지운다
                   name: v.auName?.trim() ? v.auName.trim() : undefined,
+                  // AU별 폰트·전신 앞뒤 (v2.0 사용자 제보) — 원본이 아니라 이 AU에 담는다
+                  fontId: v.fontId, bodyFontId: v.bodyFontId, fullFront: v.fullFront,
                   // AU별 색·배경 (v2.0 사용자 요청) — 「직접 지정」을 끄면 undefined가 되어
                   // 자관 값으로 되돌아간다(auStyle이 묶음 단위로 판정한다)
                   style: {

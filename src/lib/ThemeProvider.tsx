@@ -105,9 +105,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // 로드 전에는 건드리지 않음 — 첫 페인트의 인라인 FOUC 맵을 기본 다크로 덮어써 깜빡이는 것 방지 (v1.9)
   useEffect(() => {
     if (!loaded) return;
+    /* 캐릭터·자관 테마컬러는 색만 바꾸는 것 — 파생 팔레트가 ThemeVars를 통째로 새로 만들어
+       **표시 옵션까지 기본값으로 리셋**되던 것을 사이트 설정에서 이어받는다 (v2.0 사용자 제보 —
+       「헤더 설명을 껐는데 커스텀 테마 캐릭터 상세에서만 다시 보인다」) */
+    const site = draft.perMode[draft.mode];
     applyToDom(pageColor
-      ? derivePointTheme(pageColor.color, pageColor.tone ?? draft.pointTone)
-      : draft.perMode[draft.mode]);
+      ? {
+        ...derivePointTheme(pageColor.color, pageColor.tone ?? draft.pointTone),
+        pageHead: site.pageHead, pageHeadM: site.pageHeadM,
+      }
+      : site);
     // 페이지 배경 지정 (v2.0) — 팔레트를 적용한 뒤에 배경 세 값만 덮어쓴다.
     // 이 effect가 팔레트를 다시 칠하므로 순서상 여기서 덮어야 남는다.
     const root = document.documentElement;

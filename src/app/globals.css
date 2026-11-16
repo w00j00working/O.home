@@ -3,7 +3,15 @@
    프로토타입(개인홈_프로토타입_2.html)의 클래스·스타일을 그대로 계승.
    테마 변수는 ThemeProvider가 :root 인라인으로 덮어씀 (기획서 5.1)
    ========================================================== */
+/* 다크 지원 표식 (v2.0) — 강제 다크 엔진이 「이 사이트는 다크를 스스로 지원한다」로 판정해
+   건너뛰게 하는 용도. 색은 전부 테마 설정이 명시적으로 칠하므로 실제 렌더 변화는 없다 */
+@media (prefers-color-scheme: dark){:root{--os-dark:1}}
 :root{
+  /* 브라우저 강제 다크(웨일·크롬 자동 다크)가 페이지를 멋대로 다시 칠하지 않게 (v2.0 사용자 제보 —
+     「웨일 다크테마에서 카드 배경색이 어긋난다」). 색은 전부 테마 설정이 직접 관리한다.
+     웨일은 이 옵트아웃을 무시해서, 웨일에서만 layout의 인라인 스크립트가 light dark(다크 지원 선언)로
+     덮는다 — 아래의 빈 prefers-color-scheme 규칙은 「다크를 스스로 지원하는 사이트」 판정용 표식 */
+  color-scheme:only light;
   --steel-1:#1a1d22; --steel-2:#2b3038; --steel-3:#3c434d;
   --panel:rgba(252,252,253,.94); --panel-solid:#fbfbfc;
   --ink:#1d2025; --sub:#5d636d; --faint:#9aa0a9;
@@ -200,7 +208,7 @@ a{color:inherit;text-decoration:none}
 
 /* ---------- 공통 레이아웃 ---------- */
 /* 하단 여백은 BGM 미니 플레이어(약 73px)를 가리지 않는 최소치 — 과하면 불필요한 스크롤 발생 */
-.page{max-width:1180px;margin:0 auto;padding:16px 28px 80px;animation:fade .35s}
+.page{max-width:1180px;margin:0 auto;padding:16px 28px calc(80px + var(--bgm-h,0px));animation:fade .35s} /* --bgm-h: 바닥에 붙은 BGM 바가 덮는 높이 (BgmPlayer가 잰다) */
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1}}
 /* min-height: 우측 액션은 절대배치라 헤더 높이에 안 잡힌다 — 헤더가 짧아지면(설명 숨김·제목 숨김
    ·상세처럼 제목을 0높이로 둔 경우) 액션이 위로 삐져나가 상단 메뉴에 잘려 들어간다 (v2.0 사용자 발견).
@@ -445,6 +453,7 @@ a{color:inherit;text-decoration:none}
 
 /* ================= 역극 (4.9 — 프로토타입 rp-* 계승) ================= */
 .rp-layout{display:grid;grid-template-columns:280px 1fr 170px;gap:16px;height:600px} /* 우측 상태 필터 열 (v1.9) */
+.rp-layout > .tagside{align-self:start} /* PC: 그리드 행 높이만큼 늘어나지 않게 위 정렬 */
 .rp-rooms{padding:12px;display:flex;flex-direction:column;overflow:hidden} /* 헤더 고정 — 리스트만 내부 스크롤 */
 .rp-rooms-list{flex:1;overflow:auto;min-height:0}
 .rp-room{padding:12px 13px;border-radius:10px;cursor:var(--cur-pointer,pointer);transition:.14s;margin-bottom:4px}
@@ -499,14 +508,22 @@ a{color:inherit;text-decoration:none}
   .rp-mfold b{font-size:calc(13px*var(--fs,1));min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .rp-mfold small{font-size:calc(10px*var(--fs,1));color:var(--faint);letter-spacing:.08em;white-space:nowrap;flex-shrink:0}
   .rp-rooms{display:none;order:1;max-height:320px}
-  .rp-layout > .tagside{display:none;order:2}
+  /* 세로 배치에선 전폭으로 — start면 내용 폭만큼 쪼그라든다 (v2.0 사용자 제보) */
+  .rp-layout > .tagside{display:none;order:2;align-self:stretch}
   .rp-layout.mopen .rp-rooms{display:flex}
   .rp-layout.mopen > .tagside{display:block}
-  .rp-chat{order:3;height:64vh}
-  /* 입력창 포커스 — 페이지 제목·접힘 바 없이 역극 영역만 (v1.9) */
+  /* 채팅창을 화면 아래까지 — 페이지를 화면 높이(100dvh − 상단바)로 잡고 채팅이 남는 자리를 전부 차지한다.
+     예전 「100dvh − 245px」 고정 계산은 제목·접힘 바·BGM 바 높이가 글꼴 크기에 따라 달라 입력줄이 BGM 바에
+     가려졌다 (자놀/커플홈 사용자 제보: "모바일에서 BGM 재생기가 아래 라인을 가려"). BGM 바가 덮는 높이(--bgm-h)만큼
+     아래 여백을 둔다. 방 목록을 펼치면(mopen) 넘치는 만큼 페이지가 스크롤된다 */
+  .page.page-rp{height:calc(100dvh - var(--top-h,58px));display:flex;flex-direction:column;box-sizing:border-box;padding-bottom:calc(14px + var(--bgm-h,0px))}
+  .page-rp > .page-head{flex-shrink:0}
+  .page-rp > .rp-layout{flex:1;min-height:0}
+  .rp-mfold{flex-shrink:0}
+  .rp-chat{order:3;flex:1;min-height:320px;height:auto}
+  /* 입력창 포커스 — 페이지 제목·접힘 바 없이 역극 영역만 (v1.9). 높이는 위 flex가 맡는다 (키보드가 올라오면 100dvh가 줄어 같이 줄어든다) */
   .page.rp-focus .page-head{display:none}
   .page.rp-focus .rp-mfold{display:none}
-  .page.rp-focus .rp-chat{height:80vh}
 }
 
 /* ================= 이미지 라이트박스 (클릭 확대 보기) ================= */
@@ -973,7 +990,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .profile-center img{width:100%;height:100%;object-fit:cover}
 /* 스티키 안정성 (v1.9): 끝까지 스크롤했을 때 아트 하단 == 정보 패널 하단이 되도록
    하단 여백을 계산값으로 고정 — viewH(100vh-58) - top(10) - artH(100vh-150) = 82px */
-.page-char-detail{padding-bottom:82px}
+.page-char-detail{padding-bottom:calc(82px + var(--bgm-h,0px))}
 .profile-info{padding:24px;overflow:auto}
 /* 세리프는 **탭 제목에만** (v2.0 사용자 제보) — 예전 `.profile-info h3`는 본문(.prose)에
    직접 쓴 h3까지 잡아서, 본문 폰트를 바꿔도 h3만 세리프로 남았다 */
@@ -1385,11 +1402,11 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .pl-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:calc(12.5px*var(--fs,1))}
 .pl-table col.c-date{width:92px}
 .pl-table col.c-wr{width:90px}
-.pl-table col.c-role{width:56px}   /* PL·GM·HO1 짧은 표기 전용 — 가장 좁게 (4.16) */
+.pl-table col.c-role{width:76px}   /* CoC 7th 같은 룰 표기가 들어간다 — 시나리오·With에서 10px씩 가져옴 (v2.0 사용자 요청) */
 .pl-table col.c-pt{width:82px}
 .pl-table col.c-url{width:36px}    /* 맨 끝 클립 칸 */
 .pl-table col.c-mng{width:58px}
-.pl-table col.c-with{width:22%}
+.pl-table col.c-with{width:21%}   /* 22%에서 10px가량 룰 칸으로 — col에는 calc가 안 먹혀 %로 환산 (v2.0) */
 .pl-table th{font-size:calc(10px*var(--fs,1));letter-spacing:.14em;color:var(--faint);font-weight:600;text-align:center;padding:10px 6px;border-bottom:1.5px solid var(--line)}
 .pl-table th.sortable{cursor:var(--cur-pointer,pointer);user-select:none}
 .pl-table th.sortable:hover{color:var(--ink)}
@@ -1667,7 +1684,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 /* 우측 설정 패널 크기 통일 — 내용이 길어지면 내부 스크롤 없이 아래로 늘어남 (v1.9) */
 .settings-layout > .panel:not(.set-nav){min-height:calc(100vh - 250px);width:100%;box-sizing:border-box}
 .set-nav button{display:block;width:100%;text-align:left;padding:10px 13px;font-size:calc(12.5px*var(--fs,1));border-radius:8px;color:var(--sub);transition:.14s}
-.set-nav button:hover{background:#eef0f2;color:var(--ink)}
+.set-nav button:hover{background:var(--dd-hv,#eef0f2);color:var(--ink)}  /* 드롭다운 호버와 같은 테마 색 (v2.0 사용자 요청) */
 .set-nav button.on{background:var(--ink);color:#fff}
 .set-sec{margin-bottom:26px}
 .set-sec h3{font-size:calc(13px*var(--fs,1));letter-spacing:.08em;margin-bottom:4px;color:var(--ink)}
@@ -1728,7 +1745,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
   .topbar{padding:0 16px;gap:12px}
   /* gnb(flex:1)가 숨어 우측 밀림이 사라짐 — 알림·프로필/로그인 우측 정렬 복원 (8장) */
   .user-wrap,.login-link{margin-left:auto}
-  .page{padding:16px 16px 90px}
+  .page{padding:16px 16px calc(90px + var(--bgm-h,0px))}  /* 모바일 전폭 BGM 바 높이만큼 더 (자놀 이식) */
   .page-head h1{font-size:calc(24px*var(--fs,1))}
   /* 페이지 타이틀 모바일 옵션 (v1.9 사용자 요청) — 「생략」이면 모바일에서만 제목·설명 숨김
      (상태·안내 문구는 PC와 동일하게 항상 표시) */

@@ -226,14 +226,37 @@ export async function createFirebaseBackend(cfg: FirebaseCfg): Promise<Backend> 
       const u = auth.currentUser;
       if (!u) return { ok: false, error: '로그인이 필요합니다.' };
       try {
+        // 비밀번호 변경 (v2.0 사용자 제보 — 서버 모드에서 아예 동작하지 않던 버그: 예전엔 이 필드를
+        // 무시하고 ok를 돌려줘 「변경됐습니다」만 뜨고 실제로는 안 바뀌었다). 민감한 작업이라
+        // 먼저 현재 비밀번호로 재인증해야 updatePassword가 허용된다.
+        if (patch.newPassword) {
+          if (!u.email) return { ok: false, error: '이 계정은 비밀번호 로그인 계정이 아닙니다.' };
+          try {
+            const cred = authMod.EmailAuthProvider.credential(u.email, patch.currentPassword ?? '');
+            await authMod.reauthenticateWithCredential(u, cred);
+          } catch (e) {
+            const code = (e as { code?: string })?.code ?? '';
+            if (code.includes('wrong-password') || code.includes('invalid-credential')) {
+              return { ok: false, error: '현재 비밀번호가 올바르지 않습니다.' };
+            }
+            return { ok: false, error: humanError(e) };   // too-many-requests 등
+          }
+          await authMod.updatePassword(u, patch.newPassword);   // weak-password는 아래 catch가 처리
+        }
         const row: Record<string, unknown> = {};
         if (patch.nickname !== undefined) row.nickname = patch.nickname;
         if (patch.avatarUrl !== undefined) row.avatarUrl = patch.avatarUrl ?? null;
         if (patch.avatarColor !== undefined) row.avatarColor = patch.avatarColor ?? null;
-        await setDoc(doc(db, 'profiles', u.uid), row, { merge: true });
+        if (Object.keys(row).length) await setDoc(doc(db, 'profiles', u.uid), row, { merge: true });
         if (patch.nickname) await authMod.updateProfile(u, { displayName: patch.nickname });
         return { ok: true };
       } catch (e) { return { ok: false, error: humanError(e) }; }
+    },
+
+    async authToken() {
+      const u = auth.currentUser;
+      if (!u) return null;
+      try { return await u.getIdToken(); } catch { return null; }
     },
 
     /** 첫 계정을 소유자(관리자)로 등록 — 규칙이 "없을 때 1회"만 허용한다 */

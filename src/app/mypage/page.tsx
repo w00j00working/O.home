@@ -20,6 +20,7 @@ import { ColorField } from '@/components/ui/ColorField';
 import { fileDrop } from '@/lib/dnd';
 import { useToast } from '@/components/ui/Toast';
 import { PageTitle, EditableDesc } from '@/components/ui/PageText';
+import { PushSettings } from '@/components/shell/PushSettings';
 
 export default function MyPage() {
   const router = useRouter();
@@ -182,6 +183,9 @@ export default function MyPage() {
             </div>
           </div>
         </div>
+
+        {/* 웹푸시 알림 받기 (자놀 이식) — PC·모바일 체크, 처음에는 둘 다 해제 */}
+        <PushSettings />
 
         {/* 나에게 연동된 캐릭터 — 일반 회원만 (관리자는 전권이라 불필요) */}
         {!isAdmin && (

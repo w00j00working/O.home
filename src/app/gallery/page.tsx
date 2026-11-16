@@ -8,9 +8,10 @@ import { useSectionParam, filterSection, sectionSetter, secQuery } from '@/lib/s
 import { useLocalList, fmtDate } from '@/lib/postStore';
 import { BackupPost, BACKUP_SEED } from '@/lib/galleryStore';
 import { SearchBar, Pager } from '@/components/ui/Kit';
-import { CroppedBlobImg } from '@/components/ui/CropEditor';
+import { createPortal } from 'react-dom';
+import { CroppedBlobImg, CropEditor, CropValue } from '@/components/ui/CropEditor';
+import { useBlobUrl } from '@/lib/blobStore';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
-import { useBoardSettings, boardBadgeStyle } from '@/lib/boardStore';
 import { useMainStore } from '@/lib/mainStore';
 import { useCardSort, mergeOrder } from '@/lib/cardSort';
 import { useMenuSettings, canGalleryWrite, MenuPerm } from '@/lib/menuStore';
@@ -43,6 +44,22 @@ function BackupPageInner() {
   const typeBadge = (t: 'log' | 'single' | 'vlist') => boardSet.gallery.find(b => b.id === t);
   const [q, setQ] = useState('');
   const [unveiled, setUnveiled] = useState<Record<string, boolean>>({});
+  /* 우클릭 → 썸네일 수정 (v2.0 사용자 요청) — 리스트에서 바로 대표 이미지 크롭을 고친다.
+     수정 화면까지 안 가도 되게. 관리자와 글쓴이만, 이미지가 있는 글만 */
+  const [ctx, setCtx] = useState<{ x: number; y: number; post: BackupPost } | null>(null);
+  const [cropPost, setCropPost] = useState<BackupPost | null>(null);
+  useEffect(() => {
+    if (!ctx) return;
+    const close = () => setCtx(null);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [ctx]);
+  const onCtx = (e: React.MouseEvent, p: BackupPost) => {
+    if (!(isAdmin || (!!user && p.authorId === user.id)) || !p.images[0]) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setCtx({ x: e.clientX, y: e.clientY, post: p });
+  };
 
   const visible = posts
     .filter(p => isAdmin || p.visibility === 'public' || (p.visibility === 'member' && user))
@@ -94,16 +111,13 @@ function BackupPageInner() {
             const folded = p.fold && !unveiled[p.id];
             return (
               <div key={p.id} className="panel g-item" {...sort(i)}
-                onClick={() => { if (!folded && !editOn) router.push(`/gallery/${p.id}`); }}>
+                onClick={() => { if (!folded && !editOn) router.push(`/gallery/${p.id}`); }}
+                onContextMenu={e => onCtx(e, p)}>
                 <div className={`thumb ${folded ? 'veil' : ''}`}>
                   <div style={{ position: 'absolute', inset: 0 }}>
                     <CroppedBlobImg fileRef={p.images[0]} crop={p.thumbCrop} ph={p.phList[0] ?? 'cool'} />
                   </div>
-                  {!folded && (
-                    <span className="typ" style={boardBadgeStyle(typeBadge(p.type))}>
-                      {typeBadge(p.type)?.label}
-                    </span>
-                  )}
+                  {/* 유형 뱃지(로그/단일 …)는 리스트에서 뺐다 (v2.0 사용자 요청) — 상세에는 그대로 */}
                   {folded && (
                     <div className="cover" onClick={e => { e.stopPropagation(); setUnveiled(u => ({ ...u, [p.id]: true })); }}>
                       <div>
@@ -128,14 +142,14 @@ function BackupPageInner() {
       {/* 게시물이 없으면 컨테이너 자체를 숨김 — 빈 패널이 안내문 위에 카드처럼 남던 버그 (v1.9 사용자 발견) */}
       <div className="panel flush" style={{ display: view === 'list' && visible.length > 0 ? undefined : 'none' }}>
           {paged.map(p => (
-            <div key={p.id} className="list-item" onClick={() => router.push(`/gallery/${p.id}`)}>
+            <div key={p.id} className="list-item" onClick={() => router.push(`/gallery/${p.id}`)}
+              onContextMenu={e => onCtx(e, p)}>
               <div className="th" style={{ position: 'relative' }}><CroppedBlobImg fileRef={p.images[0]} crop={p.thumbCrop} ph={p.phList[0] ?? 'cool'} /></div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <b>
                   {p.title}
-                  {p.fold
-                    ? <span className="pill red" style={{ marginLeft: 6 }}>접힘</span>
-                    : <span style={{ ...boardBadgeStyle(typeBadge(p.type)), marginLeft: 6 }}>{typeBadge(p.type)?.label}</span>}
+                  {/* 유형 뱃지는 뺐다 (v2.0 사용자 요청) — 접힘 표시만 남긴다 */}
+                  {p.fold && <span className="pill red" style={{ marginLeft: 6 }}>접힘</span>}
                 </b>
                 <small>
                   {meta(p)}
@@ -153,8 +167,44 @@ function BackupPageInner() {
         </div>
       )}
       {visible.length > PER && <Pager page={cur} total={pages} onChange={setPage} />}
+
+      {/* 우클릭 메뉴 — 다른 우클릭들과 같은 순서: 메뉴 → 항목 선택 (v2.0) */}
+      {ctx && typeof document !== 'undefined' && createPortal(
+        <div style={{
+          position: 'fixed', left: ctx.x, top: ctx.y, zIndex: 130,
+          background: 'var(--panel-solid,#fff)', border: '1px solid var(--line)', borderRadius: 9,
+          boxShadow: 'var(--sh-dd)', padding: 4, display: 'grid', minWidth: 128,
+        }} onMouseDown={e => e.stopPropagation()}>
+          <div style={{
+            padding: '6px 12px 5px', fontSize: 10.5, color: 'var(--faint)', maxWidth: 200,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            borderBottom: '1px solid var(--line)', marginBottom: 3,
+          }}>{ctx.post.title}</div>
+          <button style={{ padding: '7px 12px', fontSize: 12, borderRadius: 6, textAlign: 'left' }}
+            onClick={() => { setCropPost(ctx.post); setCtx(null); }}>썸네일 수정</button>
+        </div>,
+        document.body,
+      )}
+
+      {/* 썸네일 크롭 — 작성 폼과 같은 4:3 크롭을 리스트에서 바로 (v2.0 사용자 요청) */}
+      {cropPost && (
+        <ThumbCropModal post={cropPost} onClose={() => setCropPost(null)}
+          onApply={crop => {
+            setPosts(posts.map(x => (x.id === cropPost.id ? { ...x, thumbCrop: crop } : x)));
+            setCropPost(null);
+          }} />
+      )}
     </section>
   );
+}
+
+/** 대표 이미지 크롭 모달 — blob을 URL로 풀어 CropEditor에 (훅이라 컴포넌트로 분리) */
+function ThumbCropModal({ post, onClose, onApply }: {
+  post: BackupPost; onClose: () => void; onApply: (c: CropValue) => void;
+}) {
+  const url = useBlobUrl(post.images[0]);
+  if (!url) return null;
+  return <CropEditor open src={url} aspect="4:3" initial={post.thumbCrop} onClose={onClose} onApply={onApply} />;
 }
 
 /** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */

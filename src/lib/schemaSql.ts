@@ -60,6 +60,37 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- ── 5b. 프로필 권한(role) 서버 잠금 (v2.0 보안 — 관리자 탈취 방지) ───────────
+-- RLS의 profiles_update_own은 「자기 행인지」만 보고 바뀐 role 값은 검사하지 않았다.
+-- 그래서 로그인한 누구나 콘솔에서  update profiles set role='admin' 한 줄로 관리자가 될 수 있었다.
+-- 이 트리거가 서버에서 role을 고정한다(RLS로는 컬럼 단위 제어가 안 되므로 트리거가 확실하다):
+--   · 기존 관리자(is_admin)는 회원 권한을 자유롭게 바꿀 수 있다
+--   · 그 외에는 수정으로 role을 절대 못 바꾸고(old 값 유지),
+--     신규 프로필은 관리자가 하나도 없을 때(최초 소유자 부트스트랩 = handle_new_user)만 admin 허용 —
+--     이후의 모든 가입은 콘솔로 role='admin'을 넣어도 member로 고정된다.
+create or replace function public.guard_profile_role()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare admin_count int;
+begin
+  if public.is_admin() then
+    return new;                                   -- 관리자는 권한 관리 허용
+  end if;
+  if tg_op = 'UPDATE' then
+    new.role := old.role;                         -- 수정으로는 role 변경 불가
+  else
+    select count(*) into admin_count from public.profiles where role = 'admin';
+    if admin_count > 0 then
+      new.role := 'member';                       -- 관리자가 이미 있으면 신규는 member 고정
+    end if;                                       -- (admin_count = 0 일 때만 최초 소유자 admin 통과)
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists guard_profile_role on public.profiles;
+create trigger guard_profile_role
+  before insert or update on public.profiles
+  for each row execute function public.guard_profile_role();
+
 -- ── 6. 콘텐츠 테이블 21종 ────────────────────────────────────
 -- 항목 하나 = 행 하나 (행 단위 권한·실시간). 항목의 세부 필드는 data(jsonb)에 담고,
 -- 권한·정렬·필터에 쓰는 값만 별도 컬럼으로 뽑아 둔다.
@@ -87,7 +118,8 @@ declare content_tables text[] := array[
   'comments',     -- 댓글 (v2.0 — 글 안이 아니라 자기 행으로. 글을 수정하지 않고 댓글을 달 수 있게)
   'qa_answers',   -- 자관 문답 답변 (v2.0 — 같은 이유로 자관 안이 아니라 자기 행으로)
   'rp_messages',  -- 역극 발화 (v2.0 — 같은 이유로 방 안이 아니라 자기 행으로)
-  'notifications' -- 알림 (v2.0 — 기기 보관이던 것을 서버로: 받은 사람 계정으로 어느 기기에서나)
+  'notifications', -- 알림 (v2.0 — 기기 보관이던 것을 서버로: 받은 사람 계정으로 어느 기기에서나)
+  'push_subs'     -- 웹푸시 기기 구독 (자놀 이식 — 회원마다 기기별 한 문서, 공개범위 member)
 ];
 begin
   foreach t in array content_tables loop
@@ -163,7 +195,13 @@ drop policy if exists "profiles_select" on public.profiles;
 create policy "profiles_select" on public.profiles for select using (true);
 drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles for update to authenticated
-  using (auth.uid() = id or public.is_admin());
+  using (auth.uid() = id or public.is_admin())
+  with check (auth.uid() = id or public.is_admin());   -- 바뀐 행도 검사 — 남의 행으로 바꿔치기 방지 (role은 위 트리거가 고정)
+-- 프로필 저장은 upsert(INSERT 경로)라 INSERT 정책이 없으면 행이 이미 있어도 거부된다
+-- ("new row violates row-level security policy" — v2.0 포크 제보). 자기 행만 만들 수 있게 허용.
+drop policy if exists "profiles_insert_own" on public.profiles;
+create policy "profiles_insert_own" on public.profiles for insert to authenticated
+  with check (auth.uid() = id);
 drop policy if exists "profiles_delete_admin" on public.profiles;
 create policy "profiles_delete_admin" on public.profiles for delete to authenticated
   using (public.is_admin());
@@ -202,7 +240,7 @@ do $$
 declare t text;
 begin
   -- 발화·답변·댓글이 각자 행으로 분리됐으므로(v2.0) 실시간도 그 테이블을 봐야 한다
-  foreach t in array array['rp_rooms', 'rp_messages', 'relations', 'qa_answers', 'posts', 'comments', 'guestbook', 'notifications'] loop
+  foreach t in array array['rp_rooms', 'rp_messages', 'relations', 'qa_answers', 'posts', 'comments', 'guestbook', 'notifications', 'push_subs'] loop
     begin
       execute format('alter publication supabase_realtime add table public.%I', t);
     exception when others then null;  -- 이미 추가돼 있으면 무시

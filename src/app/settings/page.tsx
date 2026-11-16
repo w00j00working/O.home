@@ -55,9 +55,11 @@ import { isServerMode, createBackend, backend } from '@/lib/backend';
 import type { BackendConfig, BackendKind } from '@/lib/backend/types';
 import { CONTENT_COLLECTIONS } from '@/lib/backend/types';
 import { visFloorOf } from '@/lib/visFloor';
-import { validateConfig, configFileText, saveLocalConfig, parseFirebaseSnippet, serverConfig } from '@/lib/serverConfig';
+import { validateConfig, configFileText, saveLocalConfig, parseFirebaseSnippet, serverConfig, serverConfigSource } from '@/lib/serverConfig';
 import { migrateTo, findOrphanFiles } from '@/lib/transfer';
 import { FIRESTORE_RULES, STORAGE_RULES } from '@/lib/firebaseRules';
+import { SCHEMA_SQL } from '@/lib/schemaSql';
+import { PushAdminRow } from '@/components/shell/PushSettings';
 
 const CATEGORIES = [
   '디자인', '메인 페이지', '위젯', '메뉴 관리', '게시판 관리', '자관 질문', '커미션', 'TRPG', '감상타래', '메모장',
@@ -1170,10 +1172,48 @@ function MemberPane() {
           내 포크·배포에는 반영 안 된 채로 남는다(오늘 만든 기능이 안 보이는 흔한 원인, v2.0 사용자 요청).
           자격 증명은 전혀 다루지 않고, 저장해 둔 내 포크 주소로 이동만 시켜 준다 — 거기서
           [Sync fork] 버튼 한 번이면 끝 */}
+      {serverOn2 && <ConfigScopeWarnRow />}
+      {/* 웹푸시 서버 키 (자놀 이식) — 회원이 정보수정에서 켤 수 있으려면 관리자가 한 번 등록해야 한다 */}
+      {serverOn2 && <div className="set-sec"><PushAdminRow /></div>}
       {serverOn2 && <ForkUpdateRow />}
       {/* 설치를 이미 마친 뒤에도 보안 규칙이 바뀔 때(버전 업데이트 등) 다시 붙여넣을 수 있게 —
           예전엔 최초 설치 화면에만 있어서 재설치 없이는 갱신된 규칙을 볼 방법이 없었다 (v2.0) */}
       {serverOn2 && <SecurityRulesRow />}
+    </div>
+  );
+}
+
+/** 연결이 이 브라우저에만 저장된 상태 경고 (v2.0 포크 제보 — 「내 브라우저에선 홈이 뜨는데
+ *  배포 링크로 들어온 사람에게는 설치 화면이 뜬다」). 설치 마지막 단계(방문자에게도 보이게 하기)를
+ *  건너뛰면 다시 알려 주는 곳이 없어 일주일씩 헤매게 된다 — 관리자가 설정에 들어오면 바로 보이게 */
+function ConfigScopeWarnRow() {
+  const src = serverConfigSource();
+  const cfg = serverConfig();
+  if (src !== 'local' || !cfg) return null;
+  const download = () => {
+    const blob = new Blob([configFileText(cfg)], { type: 'application/json' });
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u; a.download = 'ohome.config.json';
+    a.click();
+    URL.revokeObjectURL(u);
+  };
+  return (
+    <div className="set-sec" style={{ marginTop: 26, border: '1.5px solid var(--accent)', borderRadius: 12, padding: 16 }}>
+      <h3 style={{ color: 'var(--accent)' }}>방문자에게는 아직 설치 화면이 보입니다</h3>
+      <div className="d" style={{ lineHeight: 1.7 }}>
+        데이터베이스 연결이 <b>지금 이 브라우저에만</b> 저장돼 있습니다 — 다른 사람이 배포 주소로 들어오면
+        홈이 아니라 「처음 여는 중」 설치 화면이 뜹니다. 아래 파일을 내려받아 <b>저장소의 public 폴더</b>에
+        올리고 커밋하면(1~2분 뒤 자동 재배포) 방문자도 같은 홈을 봅니다. 공개용 값이라 노출돼도 안전합니다.
+        <br />
+        적용됐는지는 <b>내 배포 주소/ohome.config.json</b>을 열어 값이 보이면 성공입니다.
+      </div>
+      <div className="setup-row" style={{ marginTop: 10 }}>
+        <button className="btn btn-dark" onClick={download}>ohome.config.json 내려받기</button>
+      </div>
+      <p className="hint" style={{ margin: '8px 0 0' }}>
+        파일 대신 Vercel → Settings → Environment Variables에 환경변수로 넣는 방법도 있습니다 — 설치 화면 마지막 단계와 같습니다.
+      </p>
     </div>
   );
 }
@@ -1227,9 +1267,11 @@ function SecurityRulesRow() {
     <div className="set-sec" style={{ marginTop: 26 }}>
       <h3>보안 규칙</h3>
       <div className="d">
-        앱이 업데이트되며 규칙이 바뀔 때가 있습니다 — 새 기능이 갑자기 안 보이거나 목록이 비어 보이면
-        아래를 다시 붙여넣어 보세요. {cfg?.kind === 'firebase' ? 'Firestore' : 'Supabase'} 콘솔의 규칙 화면에
-        그대로 덮어써도 안전합니다(기존 컬렉션 권한은 그대로 유지).
+        앱이 업데이트되며 규칙이 바뀔 때가 있습니다 — 새 기능이 갑자기 안 보이거나 목록이 비어 보이거나
+        저장이 거부되면 아래를 다시 적용해 보세요.{' '}
+        {cfg?.kind === 'firebase'
+          ? 'Firestore 콘솔의 규칙 화면에 그대로 덮어써도 안전합니다(기존 컬렉션 권한은 그대로 유지).'
+          : 'Supabase 콘솔 → SQL Editor에 통째로 붙여넣고 Run — 여러 번 실행해도 안전합니다(이미 있으면 건너뜀, 쌓아 둔 글·회원은 그대로).'}
       </div>
       {cfg?.kind === 'firebase' ? (
         <div className="setup-row">
@@ -1242,14 +1284,23 @@ function SecurityRulesRow() {
           <button className="btn btn-ghost" onClick={() => setOpen(o => !o)}>{open ? '내용 접기' : '내용 보기'}</button>
         </div>
       ) : (
-        <p className="hint" style={{ margin: 0 }}>Supabase는 schema.sql을 SQL Editor에서 다시 실행해 반영합니다.</p>
+        /* Supabase도 여기서 바로 복사 (v2.0 포크 제보) — 예전에는 「schema.sql을 실행하라」는
+           안내 한 줄뿐이라, 규칙을 다시 적용하러 온 사람이 빈 화면을 만났다 */
+        <div className="setup-row">
+          <button className="btn btn-dark" onClick={() => copy(SCHEMA_SQL, 'sql')}>
+            {copied === 'sql' ? '복사됨 ✓' : '설치 SQL 복사'}
+          </button>
+          <button className="btn btn-ghost" onClick={() => setOpen(o => !o)}>{open ? '내용 접기' : '내용 보기'}</button>
+        </div>
       )}
-      {open && cfg?.kind === 'firebase' && (
+      {open && (cfg?.kind === 'firebase' ? (
         <>
           <pre className="setup-sql">{FIRESTORE_RULES}</pre>
           <pre className="setup-sql">{STORAGE_RULES}</pre>
         </>
-      )}
+      ) : (
+        <pre className="setup-sql">{SCHEMA_SQL}</pre>
+      ))}
     </div>
   );
 }

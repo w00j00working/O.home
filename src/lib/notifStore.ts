@@ -10,6 +10,7 @@
 import { newId } from './postStore';
 import { isServerMode, backend } from './backend';
 import { fetchList, syncList } from './db';
+import { webPushTo } from './push';
 import { currentUserId } from './currentUser';
 
 export type NotifType = 'rp' | 'comment' | 'guest';
@@ -86,6 +87,8 @@ export function pushNotif(n: {
   type: NotifType; toUserId: string; title: string; body?: string; href: string; dedupeKey?: string;
 }) {
   if (!notifSettings(n.toUserId)[n.type]) return;
+  // 웹푸시 (자놀 이식) — 받는 사람이 정보수정에서 켜 둔 기기로. 실패해도 조용히. 같은 방·같은 글은 tag로 겹친다
+  void webPushTo([n.toUserId], { title: n.title, body: n.body, url: n.href, tag: n.dedupeKey ?? n.type, kind: n.type });
   const list = readNotifs();
   if (n.dedupeKey) {
     const i = list.findIndex(x => !x.read && x.toUserId === n.toUserId

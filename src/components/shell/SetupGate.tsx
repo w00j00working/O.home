@@ -204,6 +204,12 @@ export function SetupGate({ children }: { children: React.ReactNode }) {
       <div className="panel setup-box wide">
         <h1>O.HOME</h1>
         <p className="d">홈을 처음 여는 중입니다 — 데이터베이스를 연결하면 시작됩니다</p>
+        {/* 남의 완성된 홈에 들어왔는데 이 화면이 뜨는 경우 (v2.0 포크 제보) — 주인의 연결이
+            그 브라우저에만 저장돼 배포에 안 올라간 상태다. 방문자가 주인에게 전달할 단서를 남긴다 */}
+        <p className="hint" style={{ margin: '2px 0 10px' }}>
+          이미 만들어진 홈의 주소로 들어왔는데 이 화면이 보인다면 — 홈 주인이 설치 마지막 단계
+          「방문자에게도 보이게 하기」(ohome.config.json 올리기)를 아직 하지 않은 것입니다. 주인에게 알려 주세요.
+        </p>
 
         {/* ── 백엔드 선택 ───────────────────────────────────── */}
         {!kind && (

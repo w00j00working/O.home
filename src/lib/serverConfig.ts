@@ -19,6 +19,9 @@ const FILE_PATH = '/ohome.config.json';
 
 let cache: BackendConfig | null = null;
 let loaded = false;
+/** 설정이 어디서 왔는지 (v2.0) — 'local'이면 이 브라우저에만 있는 것: 방문자는 설치 화면을 본다 */
+export type ConfigSource = 'file' | 'local' | 'env';
+let source: ConfigSource | null = null;
 
 function normalize(v: unknown): BackendConfig | null {
   if (!v || typeof v !== 'object') return null;
@@ -50,6 +53,7 @@ export function saveLocalConfig(v: BackendConfig | null) {
     else localStorage.removeItem(LS_KEY);
   } catch { /* 무시 */ }
   cache = v;
+  source = v ? 'local' : null;
   loaded = true;
 }
 
@@ -82,13 +86,19 @@ async function fileConfig(): Promise<BackendConfig | null> {
 /** 최종 설정 — 앱 시작 시 한 번 확정하고 이후에는 캐시 */
 export async function loadServerConfig(): Promise<BackendConfig | null> {
   if (loaded) return cache;
-  cache = (await fileConfig()) ?? localConfig() ?? envConfig();
+  const file = await fileConfig();
+  const local = file ? null : localConfig();
+  const env = file || local ? null : envConfig();
+  cache = file ?? local ?? env;
+  source = file ? 'file' : local ? 'local' : env ? 'env' : null;
   loaded = true;
   return cache;
 }
 
 export function serverConfig(): BackendConfig | null { return cache; }
 export function serverConfigLoaded(): boolean { return loaded; }
+/** 지금 쓰는 설정의 출처 — 'local'이면 방문자에게 퍼지지 않은 상태라 경고에 쓴다 (v2.0) */
+export function serverConfigSource(): ConfigSource | null { return source; }
 
 /** 설치 화면에서 내려받는 파일 — 저장소의 public/ 에 올리면 방문자에게도 적용됨 */
 export function configFileText(v: BackendConfig): string {

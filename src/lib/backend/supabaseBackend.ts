@@ -101,12 +101,33 @@ export async function createSupabaseBackend(
     async updateProfile(patch) {
       const { data } = await sb.auth.getUser();
       if (!data.user) return { ok: false, error: '로그인이 필요합니다.' };
+      // 비밀번호 변경 (v2.0 사용자 제보 — 서버 모드에서 아예 동작하지 않던 버그: 예전엔 이 필드를
+      // 무시하고 ok를 돌려줘 「변경됐습니다」만 뜨고 실제로는 안 바뀌었다). Supabase는 현재 비밀번호를
+      // 요구하지 않지만, 본인 확인을 위해 현재 비밀번호로 재로그인해 검증한 뒤 바꾼다.
+      if (patch.newPassword) {
+        const email = data.user.email;
+        if (!email) return { ok: false, error: '이 계정은 비밀번호 로그인 계정이 아닙니다.' };
+        const { error: reErr } = await sb.auth.signInWithPassword({ email, password: patch.currentPassword ?? '' });
+        if (reErr) return { ok: false, error: '현재 비밀번호가 올바르지 않습니다.' };
+        const { error: pwErr } = await sb.auth.updateUser({ password: patch.newPassword });
+        if (pwErr) {
+          return { ok: false, error: /at least|char|weak|short|6/i.test(pwErr.message) ? '비밀번호는 6자 이상이어야 합니다.' : pwErr.message };
+        }
+      }
       const row: Record<string, unknown> = { id: data.user.id };
       if (patch.nickname !== undefined) row.nickname = patch.nickname;
       if (patch.avatarUrl !== undefined) row.avatar_url = patch.avatarUrl;
       if (patch.avatarColor !== undefined) row.avatar_color = patch.avatarColor;
-      const { error } = await sb.from('profiles').upsert(row, { onConflict: 'id' });
-      return error ? { ok: false, error: error.message } : { ok: true };
+      if (Object.keys(row).length > 1) {   // id 말고 실제 바꿀 필드가 있을 때만 (비번만 바꾸면 생략)
+        const { error } = await sb.from('profiles').upsert(row, { onConflict: 'id' });
+        if (error) return { ok: false, error: error.message };
+      }
+      return { ok: true };
+    },
+
+    async authToken() {
+      const { data } = await sb.auth.getSession();
+      return data.session?.access_token ?? null;
     },
 
     // Supabase는 스키마의 트리거가 첫 가입자를 관리자로 만들어 준다 — 추가 작업 없음

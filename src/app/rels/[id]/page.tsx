@@ -401,6 +401,10 @@ export default function RelDetailPage() {
   // AU별 프로필 데이터 (v1.9) — base(원본)는 Relation 최상위, 그 외 AU는 aus 항목에 저장
   const isBaseAu = (au?.id ?? 'base') === 'base';
   const auArts = (isBaseAu ? rel?.arts : au?.arts) ?? [];
+  // AU별 이름/본문 폰트·전신 앞뒤 (v2.0 사용자 제보 — 분리가 안 되던 것) — 미지정이면 자관 기본
+  const auFont = (isBaseAu ? undefined : au?.fontId) ?? rel?.fontId;
+  const auBodyFont = (isBaseAu ? undefined : au?.bodyFontId) ?? rel?.bodyFontId;
+  const auFullFront = (isBaseAu ? undefined : au?.fullFront) ?? rel?.fullFront;
   const auTimeline = (isBaseAu ? rel?.timeline : au?.timeline) ?? [];
   const auQuestions = (isBaseAu ? rel?.questions : au?.questions) ?? [];
   const curArt = auArts[Math.min(artIdx, Math.max(0, auArts.length - 1))];
@@ -896,7 +900,7 @@ export default function RelDetailPage() {
         {/* 이름 그림자 — 색·강도 직접 지정 (v2.0 사용자 요청, 미지정: 검정 60% · 기존과 동일) */}
         {/* 이름 자체는 AU마다 다르게 붙일 수 있다 (v2.0 사용자 요청) — 안 정했으면 자관 이름 그대로 */}
         <h1 style={{
-          fontFamily: familyOf(rel.fontId), color: auSt.nameColor,
+          fontFamily: familyOf(auFont), color: auSt.nameColor,
           textShadow: `0 4px 30px ${withAlpha(auSt.nameShadowColor ?? '#000000', 0.6 * ((auSt.nameShadow ?? 100) / 100))}`,
         }}>{(!isBaseAu && au?.name?.trim()) || rel.name}</h1>
         <div className="catch" style={{ color: auSt.cpColor }}>
@@ -911,7 +915,7 @@ export default function RelDetailPage() {
       </div>
 
       {isDuo ? (
-        <div className="rel-body" style={{ fontFamily: familyOf(rel.bodyFontId) }}>
+        <div className="rel-body" style={{ fontFamily: familyOf(auBodyFont) }}>
           {pairSlots[0]
             ? <MiniProf member={pairSlots[0]} char={charOf(pairSlots[0].charId)} isAdmin={isAdmin}
                 auUnregistered={auUnregOf(pairSlots[0].charId)}
@@ -930,7 +934,7 @@ export default function RelDetailPage() {
               // AU는 자기 전신만 — base 전신을 물려받지 않음 (v1.9 사용자 확정)
               const fullRef = isBaseAu ? m?.fullImgId : au?.fulls?.[cid];
               if (!fullRef) return null;   // 등록 안 된 전신은 자리도 만들지 않는다
-              const front = (rel.fullFront ?? pairSlots[1]?.charId) === cid;
+              const front = (auFullFront ?? pairSlots[1]?.charId) === cid;
               return (
                 <div key={i} className={`fb fb-${i === 0 ? 'l' : 'r'}`}
                   style={{ background: 'transparent', zIndex: front ? 3 : 2 }}>
@@ -985,7 +989,7 @@ export default function RelDetailPage() {
         </div>
       ) : (
         /* 다인 자관 — 프로토타입 multi-body: 좌 멤버 리스트(430px) + 우 그룹 일러 */
-        <div className="multi-body" style={{ fontFamily: familyOf(rel.bodyFontId) }}>
+        <div className="multi-body" style={{ fontFamily: familyOf(auBodyFont) }}>
           <div className="panel flush" style={{ padding: '6px 0' }}>
             {rel.members.map(m => {
               const c = charOf(m.charId);
@@ -1058,7 +1062,7 @@ export default function RelDetailPage() {
       )}
 
       {/* 타임라인 / 페어 문답 탭 (v1.8) */}
-      <div className={`panel timeline ${!isDuo ? 'multi' : ''}`} style={{ fontFamily: familyOf(rel.bodyFontId) }}>
+      <div className={`panel timeline ${!isDuo ? 'multi' : ''}`} style={{ fontFamily: familyOf(auBodyFont) }}>
         <div className="rel-tabs">
           <button className={tab === 'tl' ? 'on' : ''} onClick={() => setTab('tl')}><span className="lb-pc">TIMELINE</span><span className="lb-m">T</span></button>
           {/* QUESTIONS 섹션은 ＋로 추가해야 생김 (v1.9) — 처음에는 타임라인만 */}

@@ -322,6 +322,12 @@ export interface RelAu {
   catchphrase: string;
   /** AU별 자관명 (v2.0 사용자 요청) — 비우면 자관 이름을 그대로 쓴다 */
   name?: string;
+  /** AU별 이름/본문 폰트 (v2.0 사용자 제보 — 여태 AU 편집의 폰트가 원본에 저장돼 전체가 같이 바뀌었다).
+   *  미지정이면 자관 기본 폰트 */
+  fontId?: string;
+  bodyFontId?: string;
+  /** AU별 전신 앞뒤 (v2.0) — AU 편집의 앞으로/뒤로가 원본 배치를 바꾸지 않게. 미지정: 자관 기본 */
+  fullFront?: string;
   /** AU별 색·배경 — 없으면 자관 기본 (위 RelAuStyle 설명 참조) */
   style?: RelAuStyle;
   /** AU별 멤버 표시값 — 없으면 자관 기본 (위 RelAuMember 설명 참조) */

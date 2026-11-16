@@ -51,7 +51,9 @@ export interface Backend {
   signUp(id: string, password: string, nickname: string): Promise<{ ok: boolean; error?: string }>;
   signOut(): Promise<void>;
   resetPassword(email: string): Promise<{ ok: boolean; error?: string }>;
-  updateProfile(patch: { nickname?: string; avatarUrl?: string | null; avatarColor?: string | null }): Promise<{ ok: boolean; error?: string }>;
+  updateProfile(patch: { nickname?: string; avatarUrl?: string | null; avatarColor?: string | null; currentPassword?: string; newPassword?: string }): Promise<{ ok: boolean; error?: string }>;
+  /** 지금 로그인한 계정의 토큰 — /api/push 라우트가 「이 홈의 로그인 계정」인지 확인하는 데 쓴다 (웹푸시) */
+  authToken(): Promise<string | null>;
   /** 첫 계정을 이 홈의 관리자로 등록 (관리자가 아직 없을 때만) */
   claimOwner(): Promise<{ ok: boolean; error?: string }>;
   /** 가입 회원 목록 — 역극 참여자 선택·회원 관리 화면용.
@@ -113,6 +115,7 @@ export const COLLECTION_OF: Record<string, string> = {
   // 댓글 — 글 안이 아니라 자기 문서로 (v2.0). 글 안에 두면 댓글을 달 때마다 글을 UPDATE 해야 해서
   // 「글 수정은 작성자·관리자만」 규칙에 걸려 일반 회원이 관리자 글에 댓글을 달 수 없었다
   'ohome.comments.v1': 'comments',
+  'ohome.pushsubs.v1': 'push_subs',   // 웹푸시 기기 구독 (회원마다 기기별 한 문서, 공개범위 member)
   // 자관 문답 답변 — 자관 안이 아니라 자기 문서로 (v2.0). 댓글과 같은 이유:
   // 자관 안에 두면 답을 달 때마다 자관을 UPDATE 해야 해서 일반 회원이 답할 수 없었다
   'ohome.qaanswers.v1': 'qa_answers',
